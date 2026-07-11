@@ -1,0 +1,16 @@
+{
+  "name": "high-performance-ecommerce-engine",
+  "version": "1.0.0",
+  "description": "High-Performance E-Commerce Engine with Redis Cache-Aside & MongoDB Vector Search",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install --prefix server && npm install --prefix client",
+    "dev:server": "npm run dev --prefix server",
+    "dev:client": "npm run dev --prefix client",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "seed": "npm run seed --prefix server"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

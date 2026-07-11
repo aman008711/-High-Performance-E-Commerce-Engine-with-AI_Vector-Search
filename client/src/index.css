@@ -1,0 +1,103 @@
+:root {
+  --font-heading: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Premium Slate Dark Theme */
+  --bg-main: #090a0f;
+  --bg-surface: #12141c;
+  --bg-surface-hover: #191c28;
+  --bg-surface-active: #202334;
+
+  /* Neon Glowing Accents */
+  --primary: #8b5cf6;
+  --primary-light: #a78bfa;
+  --primary-glow: rgba(139, 92, 246, 0.15);
+  
+  --secondary: #06b6d4;
+  --secondary-light: #22d3ee;
+  --secondary-glow: rgba(6, 182, 212, 0.15);
+
+  --success: #10b981;
+  --success-glow: rgba(16, 185, 129, 0.15);
+
+  --danger: #ef4444;
+  --danger-glow: rgba(239, 68, 68, 0.15);
+
+  --warning: #f59e0b;
+
+  /* Typography */
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-dark: #64748b;
+
+  /* Borders & Dividers */
+  --border-color: #26293b;
+  --border-color-hover: #3b3f5c;
+
+  /* Shadows */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 20px var(--primary-glow);
+
+  /* Layout */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --transition-fast: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-normal: 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+  color: inherit;
+}
+
+/* Micro animations and utility styles */
+.glow-text {
+  text-shadow: 0 0 10px rgba(139, 92, 246, 0.4);
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--text-main) 30%, var(--primary-light) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gradient-cyan-purple {
+  background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%);
+}
+
+.pulse-glow {
+  animation: pulse 2.5s infinite alternate;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 15px rgba(139, 92, 246, 0.1);
+  }
+  100% {
+    box-shadow: 0 0 25px rgba(139, 92, 246, 0.3);
+  }
+}

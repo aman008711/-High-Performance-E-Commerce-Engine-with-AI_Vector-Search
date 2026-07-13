@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import { env } from './config/env';
+import { connectDB } from './config/db';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -45,18 +46,29 @@ app.use(notFoundHandler);
 // Global Error Handler middleware
 app.use(errorHandler);
 
-const server = app.listen(env.PORT, () => {
-  console.log(`🚀 [Server] Running in ${env.NODE_ENV} mode on port ${env.PORT}`);
-});
+// Bootstrap Server & DB Connection
+const startServer = async () => {
+  try {
+    // Connect to MongoDB
+    await connectDB();
 
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err: Error) => {
-  console.error('💥 UNHANDLED REJECTION! Shutting down gracefully...');
-  console.error(err.name, err.message);
-  server.close(() => {
+    const server = app.listen(env.PORT, () => {
+      console.log(`🚀 [Server] Running in ${env.NODE_ENV} mode on port ${env.PORT}`);
+    });
+
+    // Handle unhandled promise rejections
+    process.on('unhandledRejection', (err: Error) => {
+      console.error('💥 UNHANDLED REJECTION! Shutting down gracefully...');
+      console.error(err.name, err.message);
+      server.close(() => {
+        process.exit(1);
+      });
+    });
+  } catch (error) {
+    console.error('💥 [Server] Failed to start server:', (error as Error).message);
     process.exit(1);
-  });
-});
+  }
+};
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (err: Error) => {
@@ -64,3 +76,6 @@ process.on('uncaughtException', (err: Error) => {
   console.error(err.name, err.message, err.stack);
   process.exit(1);
 });
+
+startServer();
+

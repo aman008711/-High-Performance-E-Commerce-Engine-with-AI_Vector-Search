@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import mongoose from 'mongoose';
 import { env } from './config/env';
 import { connectDB } from './config/db';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
@@ -14,7 +15,16 @@ app.use(helmet());
 // Enable CORS with support for credentials
 app.use(
   cors({
-    origin: true,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, postman, curl)
+      if (!origin) return callback(null, true);
+      
+      if (env.ALLOWED_ORIGINS.includes(origin) || env.NODE_ENV === 'development') {
+        callback(null, true);
+      } else {
+        callback(new Error('Blocked by CORS policy'));
+      }
+    },
     credentials: true,
   })
 );
@@ -32,11 +42,15 @@ app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
 // Base API endpoints
 app.get('/api/health', (req, res) => {
+  const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
   res.status(200).json({
     status: 'success',
     message: 'E-commerce API server is healthy',
     timestamp: new Date().toISOString(),
     env: env.NODE_ENV,
+    services: {
+      database: dbStatus,
+    },
   });
 });
 

@@ -67,5 +67,11 @@ productSchema.index(
   { weights: { name: 10, description: 5 }, name: 'TextIndex' }
 );
 
+// Automatically enforce validation checks on update mutations
+productSchema.pre('findOneAndUpdate', function (next) {
+  this.setOptions({ runValidators: true });
+  next();
+});
+
 // Export Product Model
 export const Product = model<IProduct>('Product', productSchema);

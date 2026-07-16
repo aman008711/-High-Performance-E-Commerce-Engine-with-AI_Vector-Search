@@ -233,6 +233,12 @@ function App() {
 
   return (
     <div className="app-layout">
+      {apiStatus === 'Offline' && (
+        <div className="floating-alert">
+          <span className="alert-pulse"></span>
+          <span>Connection Lost: Local API Server Offline</span>
+        </div>
+      )}
       {/* Sidebar Navigation */}
       <aside className="sidebar">
         <div>

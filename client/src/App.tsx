@@ -12,6 +12,14 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
+const getLogTagClass = (status: string): string => {
+  const s = status.toLowerCase();
+  if (s.includes('hit')) return 'hit';
+  if (s.includes('miss')) return 'miss';
+  if (s.includes('bypass')) return 'bypass';
+  if (s.includes('evict')) return 'evict';
+  return 'miss';
+};
 
 function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'catalog' | 'logs'>('dashboard');
@@ -360,7 +368,7 @@ function App() {
                     <div className="log-entry" key={idx}>
                       <span className={`log-method ${log.method.toLowerCase()}`}>{log.method}</span>
                       <span className="log-path">{log.path}</span>
-                      <span className={`log-tag ${log.status.toLowerCase().includes('hit') ? 'hit' : 'miss'}`}>{log.status}</span>
+                      <span className={`log-tag ${getLogTagClass(log.status)}`}>{log.status}</span>
                       <span className={`log-latency ${log.speed}`}>{log.latency}</span>
                     </div>
                   ))}
@@ -528,7 +536,7 @@ function App() {
                   <div className="log-entry" key={idx}>
                     <span className={`log-method ${log.method.toLowerCase()}`}>{log.method}</span>
                     <span className="log-path">{log.path}</span>
-                    <span className={`log-tag ${log.status.toLowerCase().includes('hit') ? 'hit' : 'miss'}`}>{log.status}</span>
+                    <span className={`log-tag ${getLogTagClass(log.status)}`}>{log.status}</span>
                     <span className={`log-latency ${log.speed}`}>{log.latency}</span>
                   </div>
                 ))}

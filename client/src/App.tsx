@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { api } from './services/api';
 import { 
   Activity, 
   Layers, 
@@ -14,6 +15,31 @@ import {
 
 function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'catalog' | 'logs'>('dashboard');
+  const [apiStatus, setApiStatus] = useState<'Online' | 'Offline' | 'Checking'>('Checking');
+  const [dbStatus, setDbStatus] = useState<'Connected' | 'Disconnected' | 'Checking'>('Checking');
+
+  useEffect(() => {
+    const checkSystemHealth = async () => {
+      try {
+        const response = await api.getHealth();
+        if (response.data.status === 'success') {
+          setApiStatus('Online');
+          setDbStatus(response.data.services.database === 'connected' ? 'Connected' : 'Disconnected');
+        } else {
+          setApiStatus('Offline');
+          setDbStatus('Disconnected');
+        }
+      } catch (err) {
+        setApiStatus('Offline');
+        setDbStatus('Disconnected');
+      }
+    };
+
+    checkSystemHealth();
+    // Poll system health metrics every 15 seconds
+    const intervalId = setInterval(checkSystemHealth, 15000);
+    return () => clearInterval(intervalId);
+  }, []);
 
   // Mock telemetry data
   const stats = [
@@ -84,16 +110,16 @@ function App() {
           <div className="status-row">
             <span className="status-label">API Server</span>
             <span className="status-indicator">
-              <span className="dot green"></span>
-              Online
+              <span className={`dot ${apiStatus === 'Online' ? 'green' : apiStatus === 'Offline' ? 'red' : 'yellow'}`}></span>
+              {apiStatus}
             </span>
           </div>
 
           <div className="status-row">
             <span className="status-label">MongoDB</span>
             <span className="status-indicator">
-              <span className="dot green"></span>
-              Connected
+              <span className={`dot ${dbStatus === 'Connected' ? 'green' : dbStatus === 'Disconnected' ? 'red' : 'yellow'}`}></span>
+              {dbStatus === 'Connected' ? 'Connected' : dbStatus === 'Disconnected' ? 'Disconnected' : 'Checking'}
             </span>
           </div>
 

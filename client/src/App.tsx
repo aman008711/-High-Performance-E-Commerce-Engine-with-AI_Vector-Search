@@ -25,6 +25,7 @@ function App() {
   const [totalPages, setTotalPages] = useState<number>(1);
   const [totalProducts, setTotalProducts] = useState<number>(0);
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
 
   const [avgLatency, setAvgLatency] = useState<number>(12.4);
@@ -67,6 +68,16 @@ function App() {
     return () => clearInterval(intervalId);
   }, []);
 
+  // Search input debouncer effect (waits 300ms of typing silence before querying)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      setCurrentPage(1);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   // Fetch products from backend with client-side fallback if route is not implemented yet
   const fetchProducts = async () => {
     setLoading(true);
@@ -75,7 +86,7 @@ function App() {
         page: currentPage,
         limit: 12,
         category: selectedCategory || undefined,
-        search: searchTerm || undefined
+        search: debouncedSearchTerm || undefined
       });
 
       setProducts(response.data.products);
@@ -84,7 +95,7 @@ function App() {
 
       const pathStr = `/api/products?page=${currentPage}&limit=12` + 
                       (selectedCategory ? `&category=${selectedCategory}` : '') +
-                      (searchTerm ? `&search=${encodeURIComponent(searchTerm)}` : '');
+                      (debouncedSearchTerm ? `&search=${encodeURIComponent(debouncedSearchTerm)}` : '');
                       
       const newLog = {
         method: 'GET',
@@ -105,7 +116,7 @@ function App() {
 
     } catch (error) {
       // Endpoint is 404 (Route not built on server until Day 10). Perform local client-side data mirroring.
-      const fallbackData = getMockProducts(searchTerm, selectedCategory, currentPage);
+      const fallbackData = getMockProducts(debouncedSearchTerm, selectedCategory, currentPage);
       
       // Inject standard latency delay (600ms) to demonstrate loading skeletons
       await new Promise(resolve => setTimeout(resolve, 600));
@@ -116,7 +127,7 @@ function App() {
 
       const pathStr = `/api/products?page=${currentPage}&limit=12` + 
                       (selectedCategory ? `&category=${selectedCategory}` : '') +
-                      (searchTerm ? `&search=${encodeURIComponent(searchTerm)}` : '');
+                      (debouncedSearchTerm ? `&search=${encodeURIComponent(debouncedSearchTerm)}` : '');
 
       const simulatedLatency = Math.floor(Math.random() * 45) + 65; // Simulated DB round trip: 65-110ms
       const newLog = {
@@ -135,14 +146,13 @@ function App() {
     }
   };
 
-  // Re-run search whenever page, category or keyword updates
+  // Re-run search whenever page, category or debounced keyword updates
   useEffect(() => {
     fetchProducts();
-  }, [currentPage, selectedCategory, searchTerm]);
+  }, [currentPage, selectedCategory, debouncedSearchTerm]);
 
   const handleSearch = (e: ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
-    setCurrentPage(1);
   };
 
   // Local static mock product generator matching seed schemas for client side fallbacks

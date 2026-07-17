@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import mongoose from 'mongoose';
 import { env } from './config/env';
 import { connectDB } from './config/db';
+import { isRedisConnected } from './config/redis';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -50,6 +51,7 @@ app.get('/api/health', (req, res) => {
     env: env.NODE_ENV,
     services: {
       database: dbStatus,
+      redis: isRedisConnected() ? 'connected' : 'disconnected',
     },
   });
 });

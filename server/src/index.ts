@@ -6,6 +6,7 @@ import mongoose from 'mongoose';
 import { env } from './config/env';
 import { connectDB } from './config/db';
 import { isRedisConnected } from './config/redis';
+import productRouter from './routes/productRoutes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -55,6 +56,8 @@ app.get('/api/health', (req, res) => {
     },
   });
 });
+
+app.use('/api/products', productRouter);
 
 // Fallback handlers for routes that do not exist
 app.use(notFoundHandler);

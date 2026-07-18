@@ -2,19 +2,44 @@ import { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import { Product } from '../models/Product';
 import { BadRequestError, NotFoundError } from '../utils/errors';
+import { getCache, setCache, isRedisConnected } from '../config/redis';
 
-// Retrieve product listings from MongoDB (no cache layer yet)
+// Retrieve product listings with Redis Cache-Aside optimizations
 export const getProducts = async (
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
+  const startTime = performance.now();
   try {
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const limit = Math.max(1, Math.min(100, parseInt(req.query.limit as string) || 12));
     const category = req.query.category as string;
     const search = req.query.search as string;
 
+    // Construct a deterministic cache key representation matching search parameters
+    const cacheKey = `products:all:page_${page}:limit_${limit}:cat_${category || 'none'}:search_${search || 'none'}`;
+
+    // Attempt cache lookup
+    const cachedData = await getCache(cacheKey);
+
+    if (cachedData) {
+      const endTime = performance.now();
+      const latency = parseFloat((endTime - startTime).toFixed(2));
+      
+      // Inject HTTP headers indicating a successful cache hit
+      res.setHeader('X-Cache', 'HIT');
+      res.setHeader('X-Response-Time', `${latency}ms`);
+      
+      const parsedData = JSON.parse(cachedData);
+      res.status(200).json({
+        status: 'success',
+        data: parsedData,
+      });
+      return;
+    }
+
+    // Cache miss or Redis offline: Query MongoDB database directly
     const filterQuery: any = {};
 
     if (category) {
@@ -45,14 +70,25 @@ export const getProducts = async (
     }
 
     const products = await query.skip(skip).limit(limit);
+    const responsePayload = {
+      products,
+      total,
+      pages,
+    };
+
+    // Store fetched record list back into the cache (TTL: 1 hour)
+    await setCache(cacheKey, JSON.stringify(responsePayload), 3600);
+
+    const endTime = performance.now();
+    const latency = parseFloat((endTime - startTime).toFixed(2));
+
+    // Set HTTP headers indicating Cache Miss
+    res.setHeader('X-Cache', isRedisConnected() ? 'MISS' : 'BYPASS');
+    res.setHeader('X-Response-Time', `${latency}ms`);
 
     res.status(200).json({
       status: 'success',
-      data: {
-        products,
-        total,
-        pages,
-      },
+      data: responsePayload,
     });
   } catch (error) {
     next(error);

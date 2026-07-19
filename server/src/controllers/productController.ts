@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import { Product } from '../models/Product';
 import { BadRequestError, NotFoundError } from '../utils/errors';
-import { getCache, setCache, isRedisConnected } from '../config/redis';
+import { getCache, setCache, delCache, delCachePattern, isRedisConnected } from '../config/redis';
 
 // Retrieve product listings with Redis Cache-Aside optimizations
 export const getProducts = async (
@@ -117,6 +117,103 @@ export const getProduct = async (
     res.status(200).json({
       status: 'success',
       data: product,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Create a new product and invalidate cached lists
+export const createProduct = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { name, description, price, stock, category } = req.body;
+
+    if (!name || !description || price === undefined || stock === undefined || !category) {
+      throw new BadRequestError('Missing required product fields');
+    }
+
+    const product = await Product.create(req.body);
+
+    // Evict cache list results since the catalog changed
+    await delCachePattern('products:all*');
+
+    res.status(201).json({
+      status: 'success',
+      data: product,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Update an existing product and evict specific + list cache entries
+export const updateProduct = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new BadRequestError('Invalid product ID format');
+    }
+
+    const product = await Product.findByIdAndUpdate(id, req.body, {
+      new: true,
+      runValidators: true,
+    });
+
+    if (!product) {
+      throw new NotFoundError('Product not found');
+    }
+
+    // Invalidate details cache key and all search listing keys
+    await delCache(`product:id:${id}`);
+    await delCachePattern('products:all*');
+
+    res.status(200).json({
+      status: 'success',
+      data: product,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Delete a product and evict specific + list cache entries
+export const deleteProduct = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new BadRequestError('Invalid product ID format');
+    }
+
+    const product = await Product.findByIdAndDelete(id);
+
+    if (!product) {
+      throw new NotFoundError('Product not found');
+    }
+
+    // Invalidate details cache key and all search listing keys
+    await delCache(`product:id:${id}`);
+    await delCachePattern('products:all*');
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        success: true,
+        message: 'Product deleted successfully',
+      },
     });
   } catch (error) {
     next(error);

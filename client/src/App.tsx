@@ -10,7 +10,9 @@ import {
   Search, 
   SlidersHorizontal,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Edit,
+  Trash2
 } from 'lucide-react';
 const getLogTagClass = (status: string): string => {
   const s = status.toLowerCase();
@@ -22,9 +24,11 @@ const getLogTagClass = (status: string): string => {
 };
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'catalog' | 'logs'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'catalog' | 'admin' | 'logs'>('dashboard');
   const [apiStatus, setApiStatus] = useState<'Online' | 'Offline' | 'Checking'>('Checking');
   const [dbStatus, setDbStatus] = useState<'Connected' | 'Disconnected' | 'Checking'>('Checking');
+  const [editingProduct, setEditingProduct] = useState<ApiProduct | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Products and Telemetry telemetry states
   const [products, setProducts] = useState<ApiProduct[]>([]);
@@ -163,6 +167,20 @@ function App() {
     setSearchTerm(e.target.value);
   };
 
+  const handleDelete = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this product?')) {
+      setDeletingId(id);
+      try {
+        await api.deleteProduct(id);
+        await fetchProducts();
+      } catch (err) {
+        alert('Failed to delete product: ' + err);
+      } finally {
+        setDeletingId(null);
+      }
+    }
+  };
+
   // Local static mock product generator matching seed schemas for client side fallbacks
   const getMockProducts = (search: string, cat: string, page: number) => {
     const baseProducts = [
@@ -258,10 +276,17 @@ function App() {
             </li>
             <li 
               className={`nav-item ${activeTab === 'catalog' ? 'active' : ''}`}
-              onClick={() => setActiveTab('catalog')}
+              onClick={() => { setActiveTab('catalog'); setCurrentPage(1); }}
             >
               <Layers size={18} />
               Product Catalog
+            </li>
+            <li 
+              className={`nav-item ${activeTab === 'admin' ? 'active' : ''}`}
+              onClick={() => { setActiveTab('admin'); setCurrentPage(1); }}
+            >
+              <SlidersHorizontal size={18} />
+              Admin Portal
             </li>
             <li 
               className={`nav-item ${activeTab === 'logs' ? 'active' : ''}`}
@@ -310,6 +335,7 @@ function App() {
           <h2 className="page-title">
             {activeTab === 'dashboard' && 'Dashboard Overview'}
             {activeTab === 'catalog' && 'Product Inventory'}
+            {activeTab === 'admin' && 'Products Management Grid'}
             {activeTab === 'logs' && 'System Telemetry Logs'}
           </h2>
 
@@ -531,6 +557,195 @@ function App() {
             </div>
           )}
 
+          {activeTab === 'admin' && (
+            <div className="section-panel">
+              {/* Filter Controls Header */}
+              <div className="panel-header-section" style={{ flexWrap: 'wrap', gap: '1rem' }}>
+                <div style={{ display: 'flex', gap: '0.75rem', flex: 1, minWidth: '300px' }}>
+                  <div style={{ position: 'relative', flex: 1 }}>
+                    <Search size={14} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
+                    <input 
+                      type="text" 
+                      value={searchTerm}
+                      onChange={handleSearch}
+                      placeholder="Search admin inventory..." 
+                      style={{
+                        width: '100%',
+                        backgroundColor: 'var(--bg-main)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 'var(--radius-sm)',
+                        padding: '0.5rem 0.5rem 0.5rem 2.2rem',
+                        fontSize: '0.9rem',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+                  <select
+                    value={selectedCategory}
+                    onChange={(e) => { setSelectedCategory(e.target.value); setCurrentPage(1); }}
+                    style={{
+                      backgroundColor: 'var(--bg-main)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '0.5rem 1.5rem 0.5rem 0.75rem',
+                      fontSize: '0.9rem',
+                      color: 'var(--text-main)',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="">All Categories</option>
+                    {CATEGORIES.map((cat, idx) => (
+                      <option key={idx} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                    {totalProducts} total items
+                  </span>
+                  <button 
+                    className="btn btn-primary"
+                    onClick={() => setEditingProduct({ _id: '', name: '', description: '', price: 0, stock: 0, category: CATEGORIES[0], tags: [], imageUrl: '' } as any)}
+                  >
+                    Create Product
+                  </button>
+                </div>
+              </div>
+
+              {/* Table Loader vs Admin Inventory Table */}
+              {loading ? (
+                <div className="shimmer-container" style={{ gridTemplateColumns: '1fr', gap: '0.5rem', marginTop: '1.5rem' }}>
+                  {Array.from({ length: 5 }).map((_, idx) => (
+                    <div className="shimmer-card" key={idx} style={{ height: '50px', padding: '0.5rem 1rem', display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div className="shimmer-item" style={{ height: '20px', width: '30%' }}></div>
+                      <div className="shimmer-item" style={{ height: '20px', width: '15%' }}></div>
+                      <div className="shimmer-item" style={{ height: '20px', width: '10%' }}></div>
+                      <div className="shimmer-item" style={{ height: '20px', width: '10%' }}></div>
+                      <div className="shimmer-item" style={{ height: '20px', width: '15%' }}></div>
+                    </div>
+                  ))}
+                </div>
+              ) : products.length === 0 ? (
+                <div style={{ padding: '4rem 0', color: 'var(--text-muted)', textAlign: 'center' }}>
+                  <p>No products match your search or filter settings.</p>
+                </div>
+              ) : (
+                <div className="admin-table-container">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Product Name</th>
+                        <th>Category</th>
+                        <th>Price</th>
+                        <th>Stock Level</th>
+                        <th>Cache State</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {products.map((p) => {
+                        const isZeroStock = p.stock === 0;
+                        return (
+                          <tr key={p._id}>
+                            <td style={{ fontWeight: 600 }}>{p.name}</td>
+                            <td>{p.category}</td>
+                            <td style={{ color: 'var(--secondary-light)', fontWeight: 700 }}>${p.price.toFixed(2)}</td>
+                            <td style={{ color: isZeroStock ? 'var(--danger)' : 'inherit' }}>
+                              {isZeroStock ? 'Out of Stock' : `${p.stock} units`}
+                            </td>
+                            <td>
+                              <span className={`log-tag hit`}>Cached</span>
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <button 
+                                  className="btn btn-secondary" 
+                                  onClick={() => setEditingProduct(p)}
+                                  title="Edit details"
+                                >
+                                  <Edit size={14} />
+                                  Edit
+                                </button>
+                                <button 
+                                  className="btn btn-danger" 
+                                  onClick={() => handleDelete(p._id)}
+                                  disabled={deletingId === p._id}
+                                  title="Delete product"
+                                >
+                                  <Trash2 size={14} />
+                                  {deletingId === p._id ? 'Deleting...' : 'Delete'}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Pagination controls footer */}
+              {totalPages > 1 && (
+                <div 
+                  style={{
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    marginTop: '2rem',
+                    paddingTop: '1rem',
+                    borderTop: '1px solid var(--border-color)'
+                  }}
+                >
+                  <button
+                    disabled={currentPage === 1 || loading}
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    style={{
+                      backgroundColor: 'var(--bg-main)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '0.5rem 1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      fontSize: '0.85rem',
+                      cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                      opacity: currentPage === 1 ? 0.5 : 1
+                    }}
+                  >
+                    <ChevronLeft size={16} />
+                    Previous
+                  </button>
+
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                    Page {currentPage} of {totalPages}
+                  </span>
+
+                  <button
+                    disabled={currentPage >= totalPages || loading}
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    style={{
+                      backgroundColor: 'var(--bg-main)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '0.5rem 1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      fontSize: '0.85rem',
+                      cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer',
+                      opacity: currentPage >= totalPages ? 0.5 : 1
+                    }}
+                  >
+                    Next
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {activeTab === 'logs' && (
             <div className="section-panel">
               <div className="panel-header-section">
@@ -551,6 +766,11 @@ function App() {
           )}
         </div>
       </div>
+      {editingProduct && (
+        <div style={{ display: 'none' }}>
+          Preparing editor for {editingProduct.name}...
+        </div>
+      )}
     </div>
   );
 }

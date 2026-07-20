@@ -639,3 +639,91 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-muted);
 }
 
+/* Admin products table */
+.admin-table-container {
+  overflow-x: auto;
+  margin-top: 1.5rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-surface);
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.admin-table th {
+  background-color: var(--bg-sidebar);
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.admin-table td {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-main);
+}
+
+.admin-table tr:hover {
+  background-color: rgba(255, 255, 255, 0.01);
+}
+
+/* Button UI Components */
+.btn {
+  padding: 0.45rem 0.9rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-danger {
+  background-color: var(--danger-glow);
+  color: var(--danger);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: rgba(239, 68, 68, 0.25);
+  border-color: var(--danger);
+}
+
+.btn-primary {
+  background-color: rgba(168, 85, 247, 0.15);
+  color: var(--primary-light);
+  border-color: rgba(168, 85, 247, 0.2);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: rgba(168, 85, 247, 0.25);
+  border-color: var(--primary-light);
+}
+
+.btn-secondary {
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  border-color: var(--border-color);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--bg-sidebar);
+  border-color: var(--border-color-hover);
+}
+
+

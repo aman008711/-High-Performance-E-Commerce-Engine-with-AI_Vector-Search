@@ -22,6 +22,16 @@ const getLogTagClass = (status: string): string => {
   if (s.includes('evict')) return 'evict';
   return 'miss';
 };
+const CATEGORIES = [
+  'Electronics',
+  'Apparel & Fashion',
+  'Home & Kitchen',
+  'Sports & Outdoors',
+  'Beauty & Personal Care',
+  'Books',
+  'Automotive',
+  'Toys & Games',
+];
 
 function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'catalog' | 'admin' | 'logs'>('dashboard');
@@ -29,6 +39,16 @@ function App() {
   const [dbStatus, setDbStatus] = useState<'Connected' | 'Disconnected' | 'Checking'>('Checking');
   const [editingProduct, setEditingProduct] = useState<ApiProduct | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Form CRUD bindings
+  const [formName, setFormName] = useState<string>('');
+  const [formCategory, setFormCategory] = useState<string>('');
+  const [formPrice, setFormPrice] = useState<string>('');
+  const [formStock, setFormStock] = useState<string>('');
+  const [formDescription, setFormDescription] = useState<string>('');
+  const [formImageUrl, setFormImageUrl] = useState<string>('');
+  const [formTags, setFormTags] = useState<string>('');
+  const [submitting, setSubmitting] = useState<boolean>(false);
 
   // Products and Telemetry telemetry states
   const [products, setProducts] = useState<ApiProduct[]>([]);
@@ -46,16 +66,54 @@ function App() {
     { method: 'GET', path: '/api/health', status: 'BYPASS', latency: '4.5ms', speed: 'fast' }
   ]);
 
-  const CATEGORIES = [
-    'Electronics',
-    'Apparel & Fashion',
-    'Home & Kitchen',
-    'Sports & Outdoors',
-    'Beauty & Personal Care',
-    'Books',
-    'Automotive',
-    'Toys & Games',
-  ];
+  // Populate drawer form inputs when edit targets update
+  useEffect(() => {
+    if (editingProduct) {
+      setFormName(editingProduct.name || '');
+      setFormCategory(editingProduct.category || CATEGORIES[0]);
+      setFormPrice(editingProduct.price ? editingProduct.price.toString() : '');
+      setFormStock(editingProduct.stock !== undefined ? editingProduct.stock.toString() : '');
+      setFormDescription(editingProduct.description || '');
+      setFormImageUrl(editingProduct.imageUrl || '');
+      setFormTags(editingProduct.tags ? editingProduct.tags.join(', ') : '');
+    }
+  }, [editingProduct]);
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProduct) return;
+    setSubmitting(true);
+    
+    const parsedPrice = parseFloat(formPrice) || 0;
+    const parsedStock = parseInt(formStock) || 0;
+    const parsedTags = formTags.split(',').map(t => t.trim()).filter(Boolean);
+
+    const payload = {
+      name: formName,
+      description: formDescription,
+      price: parsedPrice,
+      stock: parsedStock,
+      category: formCategory,
+      tags: parsedTags,
+      imageUrl: formImageUrl || `https://picsum.photos/seed/${encodeURIComponent(formName.slice(0, 5))}/500/400`
+    };
+
+    try {
+      if (editingProduct._id) {
+        await api.updateProduct(editingProduct._id, payload);
+      } else {
+        await api.createProduct(payload);
+      }
+      
+      // Close drawer & trigger immediate fetch (invalidates server cache)
+      setEditingProduct(null);
+      await fetchProducts();
+    } catch (err) {
+      alert('Failed to save product: ' + err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   // Poll system health metrics
   useEffect(() => {
@@ -766,9 +824,128 @@ function App() {
           )}
         </div>
       </div>
+      {/* Slide-out Edit/Create Product Drawer */}
       {editingProduct && (
-        <div style={{ display: 'none' }}>
-          Preparing editor for {editingProduct.name}...
+        <div className="drawer-overlay" onClick={() => setEditingProduct(null)}>
+          <div className="drawer-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="drawer-header">
+              <h3 className="drawer-title">
+                {editingProduct._id ? 'Modify Product Details' : 'Create New Product'}
+              </h3>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => setEditingProduct(null)}
+                style={{ padding: '0.25rem 0.5rem' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleFormSubmit}>
+              <div className="form-group">
+                <label className="form-label">Product Name</label>
+                <input 
+                  type="text" 
+                  className="form-input"
+                  required
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Category</label>
+                <select 
+                  className="form-input"
+                  required
+                  value={formCategory}
+                  onChange={(e) => setFormCategory(e.target.value)}
+                >
+                  {CATEGORIES.map((cat, idx) => (
+                    <option key={idx} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label className="form-label">Price ($)</label>
+                  <input 
+                    type="number" 
+                    step="0.01"
+                    min="0"
+                    className="form-input"
+                    required
+                    value={formPrice}
+                    onChange={(e) => setFormPrice(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="form-label">Stock Level</label>
+                  <input 
+                    type="number" 
+                    min="0"
+                    className="form-input"
+                    required
+                    value={formStock}
+                    onChange={(e) => setFormStock(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Product Description</label>
+                <textarea 
+                  className="form-input form-textarea"
+                  required
+                  value={formDescription}
+                  onChange={(e) => setFormDescription(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Product Image URL</label>
+                <input 
+                  type="url" 
+                  className="form-input"
+                  value={formImageUrl}
+                  onChange={(e) => setFormImageUrl(e.target.value)}
+                  placeholder="https://picsum.photos/seed/..."
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Tags (comma-separated)</label>
+                <input 
+                  type="text" 
+                  className="form-input"
+                  value={formTags}
+                  onChange={(e) => setFormTags(e.target.value)}
+                  placeholder="electronics, tv, smart"
+                />
+              </div>
+
+              <div className="drawer-actions">
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  style={{ flex: 1 }}
+                  onClick={() => setEditingProduct(null)}
+                  disabled={submitting}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary" 
+                  style={{ flex: 1 }}
+                  disabled={submitting}
+                >
+                  {submitting ? 'Saving...' : 'Save Product'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

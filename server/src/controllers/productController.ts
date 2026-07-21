@@ -95,7 +95,7 @@ export const getProducts = async (
   }
 };
 
-// Retrieve a single product by its ObjectId
+// Retrieve a single product by its ObjectId with Redis Cache-Aside
 export const getProduct = async (
   req: Request,
   res: Response,
@@ -108,12 +108,38 @@ export const getProduct = async (
       throw new BadRequestError('Invalid product ID format');
     }
 
-    const product = await Product.findById(id);
+    const cacheKey = `product:id:${id}`;
+    const startTime = performance.now();
 
+    // Check Redis cache first
+    const cachedProduct = await getCache(cacheKey);
+    if (cachedProduct) {
+      const endTime = performance.now();
+      const latency = parseFloat((endTime - startTime).toFixed(2));
+
+      res.setHeader('X-Cache', 'HIT');
+      res.setHeader('X-Response-Time', `${latency}ms`);
+      res.status(200).json({
+        status: 'success',
+        data: JSON.parse(cachedProduct),
+      });
+      return;
+    }
+
+    // Query database on cache miss
+    const product = await Product.findById(id);
     if (!product) {
       throw new NotFoundError('Product not found');
     }
 
+    // Store product in cache (TTL: 1 hour)
+    await setCache(cacheKey, JSON.stringify(product), 3600);
+
+    const endTime = performance.now();
+    const latency = parseFloat((endTime - startTime).toFixed(2));
+
+    res.setHeader('X-Cache', isRedisConnected() ? 'MISS' : 'BYPASS');
+    res.setHeader('X-Response-Time', `${latency}ms`);
     res.status(200).json({
       status: 'success',
       data: product,

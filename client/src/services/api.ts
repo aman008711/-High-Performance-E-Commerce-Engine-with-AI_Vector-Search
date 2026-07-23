@@ -84,6 +84,7 @@ export interface ApiProduct {
   category: string;
   tags: string[];
   imageUrl: string;
+  score?: number;
   createdAt: string;
   updatedAt: string;
 }

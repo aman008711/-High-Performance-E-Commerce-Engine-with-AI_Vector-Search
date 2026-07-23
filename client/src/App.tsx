@@ -587,6 +587,11 @@ function App() {
                     <div className="product-card" key={p._id}>
                       <div className="product-img-wrapper">
                         <span className="category-tag">{p.category}</span>
+                        {p.score !== undefined && (
+                          <span className="score-tag">
+                            AI Match: {Math.round(p.score * 100)}%
+                          </span>
+                        )}
                         <img className="product-img" src={p.imageUrl} alt={p.name} loading="lazy" />
                       </div>
                       <div className="product-info">
@@ -594,7 +599,9 @@ function App() {
                         <p className="product-desc">{p.description}</p>
                         <div className="product-footer">
                           <span className="product-price">${p.price.toFixed(2)}</span>
-                          <span className="product-stock">{p.stock} in stock</span>
+                          <span className={`product-stock ${p.stock < 50 ? 'low-stock' : ''}`}>
+                            {p.stock === 0 ? 'Out of Stock' : `${p.stock} in stock`}
+                          </span>
                         </div>
                       </div>
                     </div>

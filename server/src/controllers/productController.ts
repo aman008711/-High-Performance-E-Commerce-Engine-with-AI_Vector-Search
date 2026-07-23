@@ -167,6 +167,9 @@ export const createProduct = async (
     // Evict cache list results since the catalog changed
     await delCachePattern('products:all*');
 
+    // Trigger non-blocking background cache pre-warming for default main list page
+    warmCache().catch(err => console.error('[Redis] Background cache warming failed:', err));
+
     res.status(201).json({
       status: 'success',
       data: product,
@@ -202,6 +205,9 @@ export const updateProduct = async (
     await delCache(`product:id:${id}`);
     await delCachePattern('products:all*');
 
+    // Trigger non-blocking background cache pre-warming for default main list page
+    warmCache().catch(err => console.error('[Redis] Background cache warming failed:', err));
+
     res.status(200).json({
       status: 'success',
       data: product,
@@ -234,6 +240,9 @@ export const deleteProduct = async (
     await delCache(`product:id:${id}`);
     await delCachePattern('products:all*');
 
+    // Trigger non-blocking background cache pre-warming for default main list page
+    warmCache().catch(err => console.error('[Redis] Background cache warming failed:', err));
+
     res.status(200).json({
       status: 'success',
       data: {
@@ -245,3 +254,30 @@ export const deleteProduct = async (
     next(error);
   }
 };
+
+// Background cache pre-warming helper for default landing catalogs (page 1, limit 12)
+export const warmCache = async (): Promise<void> => {
+  try {
+    const limit = 12;
+    const skip = 0;
+
+    const [products, total] = await Promise.all([
+      Product.find().sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Product.countDocuments()
+    ]);
+
+    const pages = Math.ceil(total / limit);
+    const responsePayload = {
+      products,
+      total,
+      pages
+    };
+
+    const cacheKey = 'products:all:page_1:limit_12';
+    await setCache(cacheKey, JSON.stringify(responsePayload), 3600);
+    console.log('🔥 [Redis] Cache pre-warmed for key products:all:page_1:limit_12');
+  } catch (error) {
+    console.error('[Redis] Cache warming failed:', error);
+  }
+};
+

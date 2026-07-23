@@ -13,10 +13,18 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<ApiR
   const startTime = performance.now();
 
   try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    if (options.method && ['POST', 'PUT', 'DELETE'].includes(options.method.toUpperCase())) {
+      headers['X-Admin-Token'] = 'supersecretadmintoken';
+    }
+
     const response = await fetch(url, {
       ...options,
       headers: {
-        'Content-Type': 'application/json',
+        ...headers,
         ...options.headers,
       },
     });

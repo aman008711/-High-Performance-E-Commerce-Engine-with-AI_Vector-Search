@@ -1,8 +1,10 @@
 import mongoose from 'mongoose';
 import { connectDB } from '../config/db';
 import { Product } from '../models/Product';
+import { User } from '../models/User';
 import { generateMultipleMockProducts } from '../utils/productGenerator';
 import { faker } from '@faker-js/faker';
+import bcrypt from 'bcryptjs';
 
 const TOTAL_PRODUCTS_TO_SEED = 5000;
 const CHUNK_SIZE = 1000;
@@ -14,6 +16,16 @@ const seedDatabase = async () => {
   try {
     // Establish connection to MongoDB
     await connectDB();
+
+    console.log('🧹 [Seeding] Purging existing users collection...');
+    await User.deleteMany({});
+    const passwordHash = await bcrypt.hash('adminpassword', 10);
+    await User.create({
+      username: 'admin',
+      passwordHash,
+      role: 'admin',
+    });
+    console.log('👤 [Seeding] Seeded default admin account (username: admin, password: adminpassword)');
 
     console.log('🧹 [Seeding] Purging existing products collection...');
     const deleteResult = await Product.deleteMany({});

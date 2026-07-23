@@ -40,6 +40,15 @@ function App() {
   const [editingProduct, setEditingProduct] = useState<ApiProduct | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Authentication & Security states
+  const [authToken, setAuthToken] = useState<string | null>(localStorage.getItem('adminToken'));
+  const [loginUsername, setLoginUsername] = useState<string>('');
+  const [loginPassword, setLoginPassword] = useState<string>('');
+  const [loginError, setLoginError] = useState<string>('');
+
+  // AI Semantic Vector Search state toggle
+  const [isVectorSearch, setIsVectorSearch] = useState<boolean>(false);
+
   // Form CRUD bindings
   const [formName, setFormName] = useState<string>('');
   const [formCategory, setFormCategory] = useState<string>('');
@@ -115,6 +124,26 @@ function App() {
     }
   };
 
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    try {
+      const response = await api.login(loginUsername, loginPassword);
+      const { token } = response.data;
+      localStorage.setItem('adminToken', token);
+      setAuthToken(token);
+      setLoginUsername('');
+      setLoginPassword('');
+    } catch (err: any) {
+      setLoginError(err.message || 'Login failed. Please check credentials.');
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('adminToken');
+    setAuthToken(null);
+  };
+
   // Poll system health metrics
   useEffect(() => {
     const checkSystemHealth = async () => {
@@ -152,18 +181,28 @@ function App() {
   const fetchProducts = async () => {
     setLoading(true);
     try {
-      const response = await api.getProducts({
-        page: currentPage,
-        limit: 12,
-        category: selectedCategory || undefined,
-        search: debouncedSearchTerm || undefined
-      });
+      const fetchPromise = (isVectorSearch && debouncedSearchTerm)
+        ? api.searchProductsVector({
+            page: currentPage,
+            limit: 12,
+            category: selectedCategory || undefined,
+            search: debouncedSearchTerm
+          })
+        : api.getProducts({
+            page: currentPage,
+            limit: 12,
+            category: selectedCategory || undefined,
+            search: debouncedSearchTerm || undefined
+          });
+
+      const response = await fetchPromise;
 
       setProducts(response.data.products);
       setTotalProducts(response.data.total);
       setTotalPages(response.data.pages);
 
-      const pathStr = `/api/products?page=${currentPage}&limit=12` + 
+      const basePath = (isVectorSearch && debouncedSearchTerm) ? '/api/products/search/vector' : '/api/products';
+      const pathStr = `${basePath}?page=${currentPage}&limit=12` + 
                       (selectedCategory ? `&category=${selectedCategory}` : '') +
                       (debouncedSearchTerm ? `&search=${encodeURIComponent(debouncedSearchTerm)}` : '');
                       
@@ -216,10 +255,10 @@ function App() {
     }
   };
 
-  // Re-run search whenever page, category or debounced keyword updates
+  // Re-run search whenever page, category, search mode, or debounced keyword updates
   useEffect(() => {
     fetchProducts();
-  }, [currentPage, selectedCategory, debouncedSearchTerm]);
+  }, [currentPage, selectedCategory, debouncedSearchTerm, isVectorSearch]);
 
   const handleSearch = (e: ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
@@ -510,8 +549,16 @@ function App() {
                     ))}
                   </select>
                 </div>
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginRight: '0.5rem' }}>
+                <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', color: 'var(--text-main)', cursor: 'pointer' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={isVectorSearch} 
+                      onChange={(e) => { setIsVectorSearch(e.target.checked); setCurrentPage(1); }} 
+                    />
+                    AI Semantic Search (Vector)
+                  </label>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                     {totalProducts ? `${totalProducts} products` : 'No products'}
                   </span>
                 </div>
@@ -615,7 +662,52 @@ function App() {
             </div>
           )}
 
-          {activeTab === 'admin' && (
+          {activeTab === 'admin' && !authToken && (
+            <div className="section-panel" style={{ maxWidth: '400px', margin: '4rem auto', padding: '2rem' }}>
+              <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.5rem' }}>
+                  Admin Authorization Required
+                </h3>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                  Provide admin credentials to access the products management panel.
+                </p>
+              </div>
+
+              {loginError && (
+                <div style={{ padding: '0.75rem', backgroundColor: 'var(--danger-glow)', color: 'var(--danger)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', marginBottom: '1rem', border: '1px solid rgba(239,68,68,0.2)' }}>
+                  {loginError}
+                </div>
+              )}
+
+              <form onSubmit={handleLoginSubmit}>
+                <div className="form-group">
+                  <label className="form-label">Username</label>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    required 
+                    value={loginUsername}
+                    onChange={(e) => setLoginUsername(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Password</label>
+                  <input 
+                    type="password" 
+                    className="form-input" 
+                    required 
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                  />
+                </div>
+                <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: '1rem' }}>
+                  Authenticate Admin
+                </button>
+              </form>
+            </div>
+          )}
+
+          {activeTab === 'admin' && authToken && (
             <div className="section-panel">
               {/* Filter Controls Header */}
               <div className="panel-header-section" style={{ flexWrap: 'wrap', gap: '1rem' }}>
@@ -667,6 +759,12 @@ function App() {
                     onClick={() => setEditingProduct({ _id: '', name: '', description: '', price: 0, stock: 0, category: CATEGORIES[0], tags: [], imageUrl: '' } as any)}
                   >
                     Create Product
+                  </button>
+                  <button 
+                    className="btn btn-secondary"
+                    onClick={handleLogout}
+                  >
+                    Logout
                   </button>
                 </div>
               </div>

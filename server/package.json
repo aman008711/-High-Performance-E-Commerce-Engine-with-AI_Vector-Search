@@ -10,20 +10,26 @@
     "seed": "ts-node src/scripts/seed.ts"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "express-rate-limit": "^8.6.0",
     "helmet": "^7.1.0",
     "high-performance-ecommerce-engine": "file:..",
     "ioredis": "^5.4.1",
+    "jsonwebtoken": "^9.0.3",
     "mongoose": "^8.4.1",
     "morgan": "^1.10.0",
+    "rate-limit-redis": "^6.0.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@faker-js/faker": "^8.4.1",
+    "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.9",
     "@types/node": "^20.14.2",
     "nodemon": "^3.1.3",

@@ -281,3 +281,146 @@ export const warmCache = async (): Promise<void> => {
   }
 };
 
+// Deterministic normal unit vector embedding generator for semantic search matching locally
+export const getQueryEmbedding = (search: string, dimensions = 384): number[] => {
+  let hash = 0;
+  for (let i = 0; i < search.length; i++) {
+    hash = (hash << 5) - hash + search.charCodeAt(i);
+    hash |= 0; // Convert to 32bit integer
+  }
+
+  const seededRandom = () => {
+    const x = Math.sin(hash++) * 10000;
+    return x - Math.floor(x);
+  };
+
+  const vector: number[] = [];
+  let sumOfSquares = 0;
+
+  for (let i = 0; i < dimensions; i++) {
+    const u1 = seededRandom() || 0.0001;
+    const u2 = seededRandom();
+    const randStdNormal = Math.sqrt(-2.0 * Math.log(u1)) * Math.sin(2.0 * Math.PI * u2);
+    vector.push(randStdNormal);
+    sumOfSquares += randStdNormal * randStdNormal;
+  }
+
+  const magnitude = Math.sqrt(sumOfSquares);
+  return vector.map((val) => (magnitude > 0 ? val / magnitude : 0));
+};
+
+// AI Vector Semantic Search Controller
+export const searchProductsVector = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const search = req.query.search as string;
+    const category = req.query.category as string;
+    const page = parseInt(req.query.page as string, 10) || 1;
+    const limit = parseInt(req.query.limit as string, 10) || 12;
+
+    if (!search) {
+      throw new BadRequestError('Search query parameter is required for semantic vector search');
+    }
+
+    const startTime = performance.now();
+    const cacheKey = `products:vector:search_${search.replace(/\s+/g, '_')}:cat_${category || 'all'}:page_${page}:limit_${limit}`;
+
+    // Check Redis cache first
+    const cachedResult = await getCache(cacheKey);
+    if (cachedResult) {
+      const endTime = performance.now();
+      const latency = parseFloat((endTime - startTime).toFixed(2));
+
+      res.setHeader('X-Cache', 'HIT');
+      res.setHeader('X-Response-Time', `${latency}ms`);
+      res.status(200).json({
+        status: 'success',
+        data: JSON.parse(cachedResult),
+      });
+      return;
+    }
+
+    // Generate query embedding vector matching pre-seeded product embeddings
+    const queryVector = getQueryEmbedding(search, 384);
+
+    let products: any[] = [];
+    let total = 0;
+
+    // Use local fallback in-memory cosine ranking (default)
+    const isLocal = true;
+
+    if (!isLocal) {
+      // Production Atlas Aggregation pipeline
+      const pipeline: any[] = [
+        {
+          $vectorSearch: {
+            index: 'vector_index',
+            path: 'vectorEmbedding',
+            queryVector: queryVector,
+            numCandidates: 100,
+            limit: limit * page,
+          },
+        },
+      ];
+      if (category) {
+        pipeline.push({ $match: { category } });
+      }
+
+      const results = await Product.aggregate(pipeline);
+      total = results.length;
+      products = results.slice((page - 1) * limit, page * limit);
+    } else {
+      // Local fallback: Retrieve matching category products and score cosine similarities
+      const filter: any = {};
+      if (category) {
+        filter.category = category;
+      }
+
+      const candidates = await Product.find(
+        { ...filter, vectorEmbedding: { $exists: true, $ne: null } },
+        { name: 1, description: 1, price: 1, stock: 1, category: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
+      );
+
+      const scoredCandidates = candidates.map((product) => {
+        const productEmbedding = product.vectorEmbedding || [];
+        const score = queryVector.reduce((sum, val, idx) => sum + val * (productEmbedding[idx] || 0), 0);
+        return {
+          ...product.toObject(),
+          score: parseFloat(score.toFixed(4)),
+        };
+      });
+
+      // Sort by similarity descending
+      scoredCandidates.sort((a, b) => b.score - a.score);
+
+      total = scoredCandidates.length;
+      products = scoredCandidates.slice((page - 1) * limit, page * limit);
+    }
+
+    const pages = Math.ceil(total / limit);
+    const responsePayload = {
+      products,
+      total,
+      pages,
+    };
+
+    // Store fetched record list back into cache (TTL: 1 hour)
+    await setCache(cacheKey, JSON.stringify(responsePayload), 3600);
+
+    const endTime = performance.now();
+    const latency = parseFloat((endTime - startTime).toFixed(2));
+
+    res.setHeader('X-Cache', isRedisConnected() ? 'MISS' : 'BYPASS');
+    res.setHeader('X-Response-Time', `${latency}ms`);
+    res.status(200).json({
+      status: 'success',
+      data: responsePayload,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

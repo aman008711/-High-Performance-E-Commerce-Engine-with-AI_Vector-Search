@@ -7,6 +7,7 @@ import { env } from './config/env';
 import { connectDB } from './config/db';
 import { isRedisConnected } from './config/redis';
 import productRouter from './routes/productRoutes';
+import authRouter from './routes/authRoutes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -57,6 +58,7 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+app.use('/api/auth', authRouter);
 app.use('/api/products', productRouter);
 
 // Fallback handlers for routes that do not exist

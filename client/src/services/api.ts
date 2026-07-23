@@ -17,8 +17,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<ApiR
       'Content-Type': 'application/json',
     };
 
-    if (options.method && ['POST', 'PUT', 'DELETE'].includes(options.method.toUpperCase())) {
-      headers['X-Admin-Token'] = 'supersecretadmintoken';
+    const token = localStorage.getItem('adminToken');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
 
     const response = await fetch(url, {
@@ -111,6 +112,17 @@ export const api = {
     return request<{ products: ApiProduct[]; total: number; pages: number }>(`/products${queryString}`);
   },
 
+  searchProductsVector: (params: ProductQuery = {}) => {
+    const query = new URLSearchParams();
+    if (params.page) query.append('page', params.page.toString());
+    if (params.limit) query.append('limit', params.limit.toString());
+    if (params.category) query.append('category', params.category);
+    if (params.search) query.append('search', params.search || '');
+
+    const queryString = query.toString() ? `?${query.toString()}` : '';
+    return request<{ products: ApiProduct[]; total: number; pages: number }>(`/products/search/vector${queryString}`);
+  },
+
   getProduct: (id: string) => {
     return request<ApiProduct>(`/products/${id}`);
   },
@@ -139,5 +151,13 @@ export const api = {
   // Observability
   getHealth: () => {
     return request<HealthCheckResponse>('/health');
+  },
+
+  // Authentication
+  login: (username: string, password: string) => {
+    return request<{ token: string; user: { id: string; username: string; role: string } }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    });
   },
 };

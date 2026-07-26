@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { connectDB } from '../config/db';
 import { Product } from '../models/Product';
 import { User } from '../models/User';
+import { Discount } from '../models/Discount';
 import { generateMultipleMockProducts } from '../utils/productGenerator';
 import { faker } from '@faker-js/faker';
 import bcrypt from 'bcryptjs';
@@ -26,6 +27,15 @@ const seedDatabase = async () => {
       role: 'admin',
     });
     console.log('👤 [Seeding] Seeded default admin account (username: admin, password: adminpassword)');
+
+    console.log('🧹 [Seeding] Purging existing discount collection...');
+    await Discount.deleteMany({});
+    await Discount.insertMany([
+      { code: 'SAVE10', percent: 10, isActive: true },
+      { code: 'SAVE20', percent: 20, isActive: true },
+      { code: 'FREESHIP', percent: 15, isActive: true }
+    ]);
+    console.log('🎟️ [Seeding] Seeded initial coupon codes (SAVE10, SAVE20, FREESHIP)');
 
     console.log('🧹 [Seeding] Purging existing products collection...');
     const deleteResult = await Product.deleteMany({});

@@ -320,13 +320,14 @@ export const searchProductsVector = async (
     const category = req.query.category as string;
     const page = parseInt(req.query.page as string, 10) || 1;
     const limit = parseInt(req.query.limit as string, 10) || 12;
+    const threshold = parseFloat(req.query.threshold as string) || 0.5;
 
     if (!search) {
       throw new BadRequestError('Search query parameter is required for semantic vector search');
     }
 
     const startTime = performance.now();
-    const cacheKey = `products:vector:search_${search.replace(/\s+/g, '_')}:cat_${category || 'all'}:page_${page}:limit_${limit}`;
+    const cacheKey = `products:vector:search_${search.replace(/\s+/g, '_')}:cat_${category || 'all'}:threshold_${threshold}:page_${page}:limit_${limit}`;
 
     // Check Redis cache first
     const cachedResult = await getCache(cacheKey);
@@ -353,21 +354,32 @@ export const searchProductsVector = async (
     const isLocal = true;
 
     if (!isLocal) {
-      // Production Atlas Aggregation pipeline
+      // Production Atlas Aggregation pipeline with index pre-filters and meta scores
+      const vectorSearchStage: any = {
+        index: 'vector_index',
+        path: 'vectorEmbedding',
+        queryVector: queryVector,
+        numCandidates: 100,
+        limit: limit * page,
+      };
+
+      if (category) {
+        vectorSearchStage.filter = { category };
+      }
+
       const pipeline: any[] = [
+        { $vectorSearch: vectorSearchStage },
         {
-          $vectorSearch: {
-            index: 'vector_index',
-            path: 'vectorEmbedding',
-            queryVector: queryVector,
-            numCandidates: 100,
-            limit: limit * page,
+          $addFields: {
+            score: { $meta: 'vectorSearchScore' },
+          },
+        },
+        {
+          $match: {
+            score: { $gte: threshold },
           },
         },
       ];
-      if (category) {
-        pipeline.push({ $match: { category } });
-      }
 
       const results = await Product.aggregate(pipeline);
       total = results.length;
@@ -384,14 +396,16 @@ export const searchProductsVector = async (
         { name: 1, description: 1, price: 1, stock: 1, category: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
       );
 
-      const scoredCandidates = candidates.map((product) => {
-        const productEmbedding = product.vectorEmbedding || [];
-        const score = queryVector.reduce((sum, val, idx) => sum + val * (productEmbedding[idx] || 0), 0);
-        return {
-          ...product.toObject(),
-          score: parseFloat(score.toFixed(4)),
-        };
-      });
+      const scoredCandidates = candidates
+        .map((product) => {
+          const productEmbedding = product.vectorEmbedding || [];
+          const score = queryVector.reduce((sum, val, idx) => sum + val * (productEmbedding[idx] || 0), 0);
+          return {
+            ...product.toObject(),
+            score: parseFloat(score.toFixed(4)),
+          };
+        })
+        .filter((candidate) => candidate.score >= threshold);
 
       // Sort by similarity descending
       scoredCandidates.sort((a, b) => b.score - a.score);

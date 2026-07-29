@@ -1,10 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 import { Product } from '../models/Product';
 import { Discount } from '../models/Discount';
 import { Order } from '../models/Order';
 import { BadRequestError, NotFoundError } from '../utils/errors';
-import { delCache, delCachePattern } from '../config/redis';
+import { getCache, setCache, delCache, delCachePattern } from '../config/redis';
 import { warmCache } from './productController';
 
 export interface CartItemInput {
@@ -36,6 +37,24 @@ export const calculateCart = async (
       if (!mongoose.Types.ObjectId.isValid(item.productId)) {
         throw new BadRequestError(`Invalid product ID format: ${item.productId}`);
       }
+    }
+
+    // Generate deterministic Redis cache key based on sorted input parameters
+    const sortedItems = [...items].sort((a, b) => a.productId.localeCompare(b.productId));
+    const itemsKeyString = sortedItems.map((i) => `${i.productId}:${i.quantity}`).join(',');
+    const rawKeyString = `cart:${itemsKeyString}:code:${discountCode || ''}`;
+    const hash = crypto.createHash('sha256').update(rawKeyString).digest('hex');
+    const cacheKey = `cart:calculate:${hash}`;
+
+    // Query Redis cache
+    const cachedData = await getCache(cacheKey);
+    if (cachedData) {
+      res.setHeader('X-Cache', 'HIT');
+      res.status(200).json({
+        status: 'success',
+        data: JSON.parse(cachedData),
+      });
+      return;
     }
 
     // Map input items list to Type ObjectIds and quantities
@@ -138,6 +157,10 @@ export const calculateCart = async (
       total,
     };
 
+    // Cache calculation result in Redis with a 1-minute TTL
+    await setCache(cacheKey, JSON.stringify(responseData), 60);
+
+    res.setHeader('X-Cache', 'MISS');
     res.status(200).json({
       status: 'success',
       data: responseData,
@@ -248,6 +271,7 @@ export const placeOrder = async (
       await delCache(`product:id:${item.productId}`);
     }
     await delCachePattern('products:all*');
+    await delCachePattern('cart:calculate:*');
 
     // Trigger non-blocking background cache warming
     warmCache().catch((err) => console.error('[Redis] Background cache warming failed:', err));

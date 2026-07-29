@@ -2,7 +2,10 @@ import { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import { Product } from '../models/Product';
 import { Discount } from '../models/Discount';
+import { Order } from '../models/Order';
 import { BadRequestError, NotFoundError } from '../utils/errors';
+import { delCache, delCachePattern } from '../config/redis';
+import { warmCache } from './productController';
 
 export interface CartItemInput {
   productId: string;
@@ -140,6 +143,123 @@ export const calculateCart = async (
       data: responseData,
     });
   } catch (error) {
+    next(error);
+  }
+};
+
+// ACID transaction-based checkout controller with atomic stock decrements
+export const placeOrder = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const { items, discountCode } = req.body as {
+      items: CartItemInput[];
+      discountCode?: string;
+    };
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      throw new BadRequestError('Cart items are required to place an order');
+    }
+
+    // Resolve products, calculate prices, apply discounts, verify stocks inside transaction
+    let subtotal = 0;
+    const orderItems = [];
+
+    for (const item of items) {
+      if (!item.productId || typeof item.quantity !== 'number' || item.quantity <= 0) {
+        throw new BadRequestError('Each cart item must contain a valid productId and quantity greater than 0');
+      }
+
+      // Check stock availability atomically inside transaction session query
+      const product = await Product.findById(item.productId).session(session);
+      if (!product) {
+        throw new NotFoundError(`Product not found: ${item.productId}`);
+      }
+
+      if (product.stock < item.quantity) {
+        throw new BadRequestError(
+          `Insufficient stock for product "${product.name}". Available: ${product.stock}, Requested: ${item.quantity}`
+        );
+      }
+
+      // Decrement stock atomically
+      product.stock -= item.quantity;
+      await product.save({ session });
+
+      const itemSubtotal = product.price * item.quantity;
+      subtotal += itemSubtotal;
+
+      orderItems.push({
+        productId: product._id as any,
+        name: product.name,
+        price: product.price,
+        quantity: item.quantity,
+      });
+    }
+
+    // Verify discount code
+    let discountPercent = 0;
+    let verifiedDiscountCode: string | undefined = undefined;
+
+    if (discountCode) {
+      const discount = await Discount.findOne({
+        code: discountCode.toUpperCase(),
+        isActive: true,
+      }).session(session);
+
+      if (!discount) {
+        throw new BadRequestError(`Invalid or inactive discount code: ${discountCode}`);
+      }
+
+      if (discount.expiresAt && new Date() > discount.expiresAt) {
+        throw new BadRequestError(`Discount code "${discountCode}" has expired`);
+      }
+
+      discountPercent = discount.percent;
+      verifiedDiscountCode = discount.code;
+    }
+
+    const discountApplied = parseFloat((subtotal * (discountPercent / 100)).toFixed(2));
+    const total = parseFloat((subtotal - discountApplied).toFixed(2));
+
+    // Save final Order record
+    const order = new Order({
+      items: orderItems,
+      subtotal: parseFloat(subtotal.toFixed(2)),
+      discountCode: verifiedDiscountCode,
+      discountApplied,
+      total,
+      status: 'completed',
+    });
+
+    await order.save({ session });
+
+    // Commit Transaction
+    await session.commitTransaction();
+    session.endSession();
+
+    // Invalidate Redis caches for all purchased items & list catalog page views (post-commit)
+    for (const item of orderItems) {
+      await delCache(`product:id:${item.productId}`);
+    }
+    await delCachePattern('products:all*');
+
+    // Trigger non-blocking background cache warming
+    warmCache().catch((err) => console.error('[Redis] Background cache warming failed:', err));
+
+    res.status(201).json({
+      status: 'success',
+      data: order,
+    });
+  } catch (error) {
+    // Abort Transaction on error (automatically rolls back any database updates / decrements!)
+    await session.abortTransaction();
+    session.endSession();
     next(error);
   }
 };

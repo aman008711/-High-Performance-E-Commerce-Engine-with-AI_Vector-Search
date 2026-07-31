@@ -1,80 +1,136 @@
 import { faker } from '@faker-js/faker';
 
-// Define a structured list of categories to ensure realistic distribution and queryability
+// Expanded categories list
 export const CATEGORIES = [
-  'Electronics',
-  'Apparel & Fashion',
-  'Home & Kitchen',
-  'Sports & Outdoors',
-  'Beauty & Personal Care',
-  'Books',
-  'Automotive',
-  'Toys & Games',
+  "Men's Clothing",
+  "Women's Clothing",
+  "Shoes",
+  "Electronics",
+  "Mobiles",
+  "Laptops",
+  "Watches",
+  "Beauty",
+  "Home & Kitchen",
+  "Grocery",
+  "Sports",
+  "Books",
+  "Toys",
+  "Furniture",
+  "Accessories"
 ];
 
-const PRODUCT_TEMPLATES: Record<string, string[]> = {
-  'Electronics': [
-    'Wireless Mouse', 'Mechanical Keyboard', 'Noise-Canceling Headphones', 
-    'Bluetooth Speaker', 'LED Gaming Monitor', 'Smart Watch', 'USB-C Hub', 
-    'Webcam', 'Dual-Band Router', 'External SSD', 'Microphone', 'Graphics Tablet'
+// Subcategory product templates mapping
+const PRODUCT_TEMPLATES: Record<string, { subcategory: string; items: string[] }[]> = {
+  "Men's Clothing": [
+    { subcategory: "T-Shirts", items: ["Oversized T-Shirt", "Polo T-Shirt", "V-Neck T-Shirt", "Graphic Print Tee"] },
+    { subcategory: "Shirts", items: ["Casual Cotton Shirt", "Formal Dress Shirt", "Slim Fit Denim Shirt", "Flannel Plaid Shirt"] },
+    { subcategory: "Jeans", items: ["Slim Fit Jeans", "Regular Straight Jeans", "Skinny Denim Jeans", "Distressed Jeans"] },
+    { subcategory: "Jackets", items: ["Leather Biker Jacket", "Windbreaker Jacket", "Denim Trucker Jacket", "Puffer Winter Jacket"] },
+    { subcategory: "Hoodies", items: ["Fleece Pullover Hoodie", "Zip-Up Hoodie Sweatshirt", "Oversized Streetwear Hoodie"] }
   ],
-  'Apparel & Fashion': [
-    'Cotton T-Shirt', 'Denim Jeans', 'Leather Jacket', 'Running Sneakers', 
-    'Wool Sweater', 'Sunglasses', 'Baseball Cap', 'Socks Pack', 'Anorak Jacket', 
-    'Pajama Set', 'Canvas Backpack', 'Raincoat'
+  "Women's Clothing": [
+    { subcategory: "Dresses", items: ["Floral Summer Dress", "Evening Gown", "Cocktail Party Dress", "Maxi Sundress"] },
+    { subcategory: "Tops", items: ["Chiffon Blouse", "Casual Crop Top", "Ribbed Tank Top", "V-Neck Tee"] },
+    { subcategory: "Skirts", items: ["Pleated A-Line Skirt", "Denim Mini Skirt", "High-Waisted Pencil Skirt"] },
+    { subcategory: "Jeans", items: ["High-Rise Mom Jeans", "Skinny Fit Jeans", "Wide Leg Denim Trousers"] },
+    { subcategory: "Sweaters", items: ["Knit Cardigan Sweater", "Turtle Neck Pullover", "Oversized Cable Knit Sweater"] }
   ],
-  'Home & Kitchen': [
-    'Coffee Mug', 'Chef Knife Set', 'Non-Stick Skillet', 'Smoothie Blender', 
-    'Electric Kettle', 'Air Fryer', 'Food Storage Containers', 'Coffee Maker', 
-    'Toaster', 'Cutting Board', 'Silicon Cooking Utensils', 'Spice Rack'
+  "Shoes": [
+    { subcategory: "Running Shoes", items: ["Ultralight Running Shoes", "Trail Running Sneakers", "Cushioned Athletic Shoes"] },
+    { subcategory: "Sneakers", items: ["Classic Canvas Sneakers", "High-Top Skate Shoes", "Retro Leather Sneakers"] },
+    { subcategory: "Formal Shoes", items: ["Leather Oxford Shoes", "Formal Derby Shoes", "Brogue Dress Shoes"] },
+    { subcategory: "Loafers", items: ["Suede Penny Loafers", "Casual Slip-On Moccasins"] },
+    { subcategory: "Boots", items: ["Chelsea Leather Boots", "Ankle Combat Boots", "Suede Desert Boots"] }
   ],
-  'Sports & Outdoors': [
-    'Insulated Water Bottle', 'Yoga Mat', 'Dumbbells Set', 'Camping Tent', 
-    'Sleeping Bag', 'Hiking Backpack', 'Tennis Racket', 'Bicycle Lock', 
-    'Resistance Bands', 'Camping Lantern', 'Hydration Pack', 'Snorkel Mask'
+  "Electronics": [
+    { subcategory: "Headphones", items: ["Wireless Bluetooth Headphones", "Noise-Canceling Earbuds", "In-Ear Sports Earphones"] },
+    { subcategory: "Keyboards", items: ["Mechanical Gaming Keyboard", "Slim Wireless Keyboard", "Ergonomic Split Keyboard"] },
+    { subcategory: "Speakers", items: ["Portable Bluetooth Speaker", "Smart Home Voice Assistant Speaker", "Soundbar Home Theater"] },
+    { subcategory: "Monitors", items: ["UltraWide Gaming Monitor", "4K Professional Monitor", "Curved Desktop Display"] },
+    { subcategory: "Webcams", items: ["1080p HD Streaming Webcam", "4K Autofocus Conference Webcam"] }
   ],
-  'Beauty & Personal Care': [
-    'Moisturizing Face Cream', 'Sulfate-Free Shampoo', 'Electric Toothbrush', 
-    'Essential Oil Diffuser', 'Sunscreen Lotion SPF 50', 'Beard Grooming Kit', 
-    'Lip Balm Set', 'Clay Face Mask', 'Body Wash', 'Hair Dryer', 'Perfume Spray'
+  "Mobiles": [
+    { subcategory: "Smartphones", items: ["Pro smartphone 5G", "Lite smartphone", "Camera Flagship Phone"] },
+    { subcategory: "Basic Phones", items: ["Classic Feature Phone", "Rugged Dual-SIM Phone"] }
   ],
-  'Books': [
-    'Science Fiction Novel', 'Cookbook Collection', 'History Biography', 
-    'Mystery Thriller Book', 'Self-Help Guide', 'Financial Freedom Handbook', 
-    'Poetry Anthology', 'Graphic Novel', 'Travel Guidebook', 'Fantasy Epic Novel'
+  "Laptops": [
+    { subcategory: "Gaming Laptops", items: ["Gaming Laptop RTX", "Pro Esports Laptop"] },
+    { subcategory: "Ultrabooks", items: ["Slim Aluminum Ultrabook", "Convertible 2-in-1 Touchscreen Laptop"] }
   ],
-  'Automotive': [
-    'Car Phone Mount', 'Windshield Wiper Blades', 'All-Weather Floor Mats', 
-    'Tire Inflator Portable Pump', 'Car Dash Cam', 'Leather Seat Covers', 
-    'Car Cleaning Wipes', 'Jump Starter Battery Pack', 'Car Polish Wax'
+  "Watches": [
+    { subcategory: "Smart Watches", items: ["GPS Fitness Smartwatch", "Heart Rate Tracker smartwatch", "Active Health Watch"] },
+    { subcategory: "Analog Watches", items: ["Stainless Steel Analog Watch", "Minimalist Quartz Watch", "Luxury Chronograph Watch"] }
   ],
-  'Toys & Games': [
-    'Building Blocks Set', 'Board Game Classic', 'Remote Control Drone', 
-    'Jigsaw Puzzle 1000 Pieces', 'Plush Teddy Bear', 'Art Supplies Kit', 
-    'STEM Science Kit', 'Card Game', 'Wooden Train Set', 'Water Gun Launcher'
+  "Beauty": [
+    { subcategory: "Face Creams", items: ["Moisturizing Face Cream", "Hydrating Hyaluronic Serum", "Anti-Aging Night Cream"] },
+    { subcategory: "Shampoos", items: ["Anti-Dandruff Shampoo", "Nourishing Argan Oil Conditioner", "Hair Volumizing Shampoo"] },
+    { subcategory: "Perfumes", items: ["Eau De Parfum Spray", "Fresh Citrus Cologne", "Floral Body Mist"] }
+  ],
+  "Home & Kitchen": [
+    { subcategory: "Blenders", items: ["High-Speed Smoothie Blender", "Personal Single-Serve Blender"] },
+    { subcategory: "Kettles", items: ["Electric Glass Kettle", "Gooseneck Pour-Over Kettle"] },
+    { subcategory: "Cookware", items: ["Non-Stick Frying Pan", "Cast Iron Skillet", "Stainless Steel Cooking Pot Set"] },
+    { subcategory: "Toasters", items: ["2-Slice Retro Toaster", "Digital Smart Toaster"] }
+  ],
+  "Grocery": [
+    { subcategory: "Coffee Beans", items: ["Organic Dark Roast Coffee Beans", "Medium Roast Ground Coffee"] },
+    { subcategory: "Spices", items: ["Premium Himalayan Pink Salt", "Organic Black Pepper Grinder", "Gourmet Turmeric Powder"] },
+    { subcategory: "Tea Bags", items: ["English Breakfast Tea Bags", "Pure Green Tea Bags", "Chamomile Herbal Infusion"] }
+  ],
+  "Sports": [
+    { subcategory: "Yoga Mats", items: ["Eco-Friendly TPE Yoga Mat", "Extra Thick Pilates Mat"] },
+    { subcategory: "Dumbbells", items: ["Hex Dumbbells Pair", "Adjustable Dumbbell Set"] },
+    { subcategory: "Tents", items: ["4-Person Waterproof Camping Tent", "Pop-Up Backpacking Tent"] },
+    { subcategory: "Tennis Rackets", items: ["Carbon Fiber Tennis Racket", "Beginner Tennis Racquet"] }
+  ],
+  "Books": [
+    { subcategory: "Fiction Novels", items: ["Sci-Fi Dystopian Novel", "Classic Romance Paperback", "Epic Fantasy Novel"] },
+    { subcategory: "Biographies", items: ["Historical Biography Book", "Tech Founder Memoir"] },
+    { subcategory: "Cookbooks", items: ["Gourmet Healthy Recipes Cookbook", "Easy Baking Desserts Book"] }
+  ],
+  "Toys": [
+    { subcategory: "Building Blocks", items: ["Space Shuttle Building Blocks Set", "City Police Station Creative Toys"] },
+    { subcategory: "Board Games", items: ["Classic Strategy Board Game", "Party Trivia Card Game"] },
+    { subcategory: "Drones", items: ["Mini Quadcopter Drone with HD Camera", "RC Stunt Drone for Kids"] }
+  ],
+  "Furniture": [
+    { subcategory: "Office Chairs", items: ["Ergonomic Mesh Office Chair", "Luxury Leather Executive Chair"] },
+    { subcategory: "Coffee Tables", items: ["Modern Wooden Coffee Table", "Minimalist Metal Frame Nesting Tables"] },
+    { subcategory: "Desks", items: ["L-Shaped Corner Writing Desk", "Adjustable Height Standing Desk"] }
+  ],
+  "Accessories": [
+    { subcategory: "Sunglasses", items: ["Polarized Aviator Sunglasses", "Wayfarer UV Protection Sunglasses"] },
+    { subcategory: "Belts", items: ["Genuine Leather Reversible Belt", "Casual Woven Canvas Belt"] },
+    { subcategory: "Backpacks", items: ["Water-Resistant Laptop Backpack", "Canvas Hiking Rucksack", "Anti-Theft Travel Bag"] },
+    { subcategory: "Beanies", items: ["Ribbed Knit Winter Beanie Hat", "Slouchy Warm Skull Cap"] }
   ]
 };
 
-// Helper to generate a unit-normalized mock vector embedding of a given dimension (default 384)
-// Unit-normalization is crucial for Cosine Similarity search operations
+const BRANDS: Record<string, string[]> = {
+  fashion: ["Nike", "Adidas", "Levi's", "Zara", "H&M", "Puma", "Tommy Hilfiger", "Calvin Klein"],
+  tech: ["Apple", "Samsung", "Sony", "Logitech", "Dell", "HP", "Boat", "Casio", "Lenovo", "Asus"],
+  home: ["Philips", "Prestige", "Ikea", "Lego", "Hawkins", "Dyson", "Hamilton Beach"],
+  beauty: ["L'Oreal", "Nivea", "Clinique", "The Body Shop", "Estee Lauder", "Maybelline"],
+  grocery: ["Nescafe", "Tata", "Cadbury", "Organic India", "Twinings", "Starbucks"],
+  books: ["Penguin Books", "HarperCollins", "Random House", "Oxford Press"],
+  general: ["AmazonBasics", "Generic"]
+};
+
+const COLORS = ["Black", "White", "Grey", "Blue", "Red", "Green", "Yellow", "Navy", "Olive", "Pink", "Silver", "Gold", "Beige"];
+const MATERIALS = ["Cotton", "Polyester", "Leather", "Denim", "Wool", "Plastic", "Metal", "Glass", "Wood", "Ceramic", "Stainless Steel", "Suede", "Canvas"];
+
+// Normalized L2 vector generator
 export const generateNormalizedVector = (dimensions = 384): number[] => {
   const vector: number[] = [];
   let sumOfSquares = 0;
-
-  // Generate random coordinates
   for (let i = 0; i < dimensions; i++) {
-    // Standard normal distribution approximation using Box-Muller transform
-    const u1 = Math.random() || 0.0001; // Avoid 0
+    const u1 = Math.random() || 0.0001;
     const u2 = Math.random();
     const randStdNormal = Math.sqrt(-2.0 * Math.log(u1)) * Math.sin(2.0 * Math.PI * u2);
     vector.push(randStdNormal);
     sumOfSquares += randStdNormal * randStdNormal;
   }
-
-  // Calculate L2 Norm (magnitude)
   const magnitude = Math.sqrt(sumOfSquares);
-
-  // Divide coordinates by magnitude to yield a unit vector
   return vector.map((val) => (magnitude > 0 ? val / magnitude : 0));
 };
 
@@ -84,44 +140,94 @@ export interface MockProductInput {
   price: number;
   stock: number;
   category: string;
+  subcategory: string;
+  brand: string;
+  color: string;
+  gender: string;
+  material: string;
+  rating: number;
   tags: string[];
   imageUrl: string;
   vectorEmbedding: number[];
 }
 
-// Generate a single realistic mock product
 export const generateMockProduct = (): MockProductInput => {
   const category = faker.helpers.arrayElement(CATEGORIES);
-  const templates = PRODUCT_TEMPLATES[category] || ['Generic Item'];
-  const baseType = faker.helpers.arrayElement(templates);
+  const subcatGroup = faker.helpers.arrayElement(PRODUCT_TEMPLATES[category]);
+  const subcategory = subcatGroup.subcategory;
+  const baseItem = faker.helpers.arrayElement(subcatGroup.items);
 
-  const material = faker.commerce.productMaterial();
-  const color = faker.color.human();
+  // Determine appropriate brand list
+  let brandList = BRANDS.general;
+  if (["Men's Clothing", "Women's Clothing", "Shoes", "Accessories"].includes(category)) {
+    brandList = BRANDS.fashion;
+  } else if (["Electronics", "Mobiles", "Laptops", "Watches"].includes(category)) {
+    brandList = BRANDS.tech;
+  } else if (["Home & Kitchen", "Furniture", "Toys"].includes(category)) {
+    brandList = BRANDS.home;
+  } else if (category === "Beauty") {
+    brandList = BRANDS.beauty;
+  } else if (category === "Grocery") {
+    brandList = BRANDS.grocery;
+  } else if (category === "Books") {
+    brandList = BRANDS.books;
+  }
+  const brand = faker.helpers.arrayElement(brandList);
+
+  const color = faker.helpers.arrayElement(COLORS);
+  const material = faker.helpers.arrayElement(MATERIALS);
   const adjective = faker.commerce.productAdjective();
 
-  // Create name utilizing realistic product type
-  const name = `${adjective} ${color} ${baseType}`;
-  const description = `${faker.commerce.productDescription()}. Crafted with premium ${material.toLowerCase()} and available in ${color.toLowerCase()}. Perfect for everyday utility and modern styling.`;
-  const price = parseFloat(faker.commerce.price({ min: 10, max: 1200, dec: 2 }));
-  const stock = faker.number.int({ min: 0, max: 450 });
+  // Handle Gender assignment
+  let gender = "Unisex";
+  if (category === "Men's Clothing") {
+    gender = "Men";
+  } else if (category === "Women's Clothing") {
+    gender = "Women";
+  } else if (["Shoes", "Watches", "Accessories"].includes(category)) {
+    gender = faker.helpers.arrayElement(["Men", "Women", "Unisex"]);
+  }
+
+  // Construct premium product title
+  const name = `${brand} ${adjective} ${color} ${baseItem}`;
+  const description = `${faker.commerce.productDescription()}. This premium ${baseItem.toLowerCase()} from ${brand} is engineered with high-quality ${material.toLowerCase()} and finished in a stylish ${color.toLowerCase()} tone. Tailored for ${gender.toLowerCase()} wearers, it offers outstanding reliability and modern aesthetics.`;
   
-  // Create tags including keyword components of the base type
-  const typeKeywords = baseType.toLowerCase().split(/\s+/);
+  // Set category-appropriate pricing
+  let minPrice = 10;
+  let maxPrice = 300;
+  if (category === "Laptops") {
+    minPrice = 500;
+    maxPrice = 2500;
+  } else if (category === "Mobiles") {
+    minPrice = 200;
+    maxPrice = 1200;
+  } else if (category === "Watches") {
+    minPrice = 50;
+    maxPrice = 800;
+  } else if (category === "Grocery") {
+    minPrice = 5;
+    maxPrice = 40;
+  }
+  const price = parseFloat(faker.commerce.price({ min: minPrice, max: maxPrice, dec: 2 }));
+  const stock = faker.number.int({ min: 5, max: 250 });
+  const rating = parseFloat(faker.number.float({ min: 3.5, max: 5.0, precision: 0.1 }).toFixed(1));
+
+  // Build clean, query-stemmed index tags
+  const nameWords = baseItem.toLowerCase().split(/\s+/);
   const tags = Array.from(
     new Set([
-      material.toLowerCase(),
+      category.toLowerCase(),
+      subcategory.toLowerCase(),
+      brand.toLowerCase(),
       color.toLowerCase(),
-      adjective.toLowerCase(),
-      faker.word.adjective(),
-      ...typeKeywords
+      material.toLowerCase(),
+      gender.toLowerCase(),
+      ...nameWords
     ])
   );
 
-  // Fetch a reliable, high-resolution random category image from Picsum
   const randomImageId = faker.number.int({ min: 1, max: 1000 });
   const imageUrl = `https://picsum.photos/seed/${randomImageId}/500/400`;
-
-  // 384 dimensions matching typical lightweight sentence-transformers (e.g. all-MiniLM-L6-v2)
   const vectorEmbedding = generateNormalizedVector(384);
 
   return {
@@ -130,13 +236,18 @@ export const generateMockProduct = (): MockProductInput => {
     price,
     stock,
     category,
+    subcategory,
+    brand,
+    color,
+    gender,
+    material,
+    rating,
     tags,
     imageUrl,
-    vectorEmbedding,
+    vectorEmbedding
   };
 };
 
-// Generate multiple mock products
 export const generateMultipleMockProducts = (count: number): MockProductInput[] => {
   const products: MockProductInput[] = [];
   for (let i = 0; i < count; i++) {

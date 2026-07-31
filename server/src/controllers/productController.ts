@@ -310,6 +310,143 @@ export const getQueryEmbedding = (search: string, dimensions = 384): number[] =>
 };
 
 // AI Vector Semantic Search Controller
+// AI Query Understanding Parser
+export interface ParsedQuery {
+  category?: string;
+  subcategory?: string;
+  brand?: string;
+  color?: string;
+  gender?: string;
+  material?: string;
+  maxPrice?: number;
+  minPrice?: number;
+}
+
+export const parseQueryUnderstanding = (searchQuery: string): ParsedQuery => {
+  const query = searchQuery.toLowerCase().trim();
+  const parsed: ParsedQuery = {};
+
+  // Extract Price filters
+  const underMatch = query.match(/(?:under|below|less than|within)\s*([0-9]+)/);
+  if (underMatch) {
+    parsed.maxPrice = parseFloat(underMatch[1]);
+  }
+  const aboveMatch = query.match(/(?:above|over|more than|greater than)\s*([0-9]+)/);
+  if (aboveMatch) {
+    parsed.minPrice = parseFloat(aboveMatch[1]);
+  }
+  if (query.includes('cheap')) {
+    parsed.maxPrice = 100;
+  }
+
+  // Extract Gender
+  if (/\b(men|mens|man|boys)\b/.test(query)) {
+    parsed.gender = "Men";
+  } else if (/\b(women|womens|woman|lady|ladies|girls)\b/.test(query)) {
+    parsed.gender = "Women";
+  } else if (/\b(unisex)\b/.test(query)) {
+    parsed.gender = "Unisex";
+  } else if (/\b(kid|kids|child|children)\b/.test(query)) {
+    parsed.gender = "Kids";
+  }
+
+  // Extract Color
+  const colors = ["black", "white", "grey", "gray", "blue", "red", "green", "yellow", "navy", "olive", "pink", "silver", "gold", "beige"];
+  for (const c of colors) {
+    const regex = new RegExp(`\\b${c}\\b`, 'i');
+    if (regex.test(query)) {
+      parsed.color = c === "gray" ? "Grey" : c.charAt(0).toUpperCase() + c.slice(1);
+      break;
+    }
+  }
+
+  // Extract Material
+  const materials = ["cotton", "polyester", "leather", "denim", "wool", "plastic", "metal", "glass", "wood", "wooden", "ceramic", "steel", "suede", "canvas"];
+  for (const m of materials) {
+    const regex = new RegExp(`\\b${m}\\b`, 'i');
+    if (regex.test(query)) {
+      parsed.material = m === "wooden" ? "Wood" : m.charAt(0).toUpperCase() + m.slice(1);
+      break;
+    }
+  }
+
+  // Extract Brand
+  const brands = ["nike", "adidas", "levis", "levi", "zara", "puma", "tommy", "hilfiger", "boat", "casio", "apple", "samsung", "sony", "logitech", "dell", "hp", "lenovo", "asus", "philips", "prestige", "ikea", "lego", "hawkins", "dyson", "nescafe", "tata", "cadbury", "starbucks"];
+  for (const b of brands) {
+    const regex = new RegExp(`\\b${b}\\b`, 'i');
+    if (regex.test(query)) {
+      let brandVal = b.charAt(0).toUpperCase() + b.slice(1);
+      if (b === "levis" || b === "levi") brandVal = "Levi's";
+      if (b === "tommy" || b === "hilfiger") brandVal = "Tommy Hilfiger";
+      parsed.brand = brandVal;
+      break;
+    }
+  }
+
+  // Category & Subcategory synonyms mapping
+  const mappings: { keywords: string[]; category?: string; subcategory?: string }[] = [
+    { keywords: ["tshirt", "t-shirt", "tee", "teeshirt", "tees"], subcategory: "T-Shirts" },
+    { keywords: ["shirt", "shirts"], subcategory: "Shirts" },
+    { keywords: ["jeans", "denim", "pants", "trousers"], subcategory: "Jeans" },
+    { keywords: ["jacket", "jackets", "windbreaker", "puffer"], subcategory: "Jackets" },
+    { keywords: ["hoodie", "hoodies", "sweatshirt", "sweatshirts"], subcategory: "Hoodies" },
+    { keywords: ["dress", "dresses", "gown", "gowns"], category: "Women's Clothing", subcategory: "Dresses" },
+    { keywords: ["top", "tops", "blouse", "blouses"], category: "Women's Clothing", subcategory: "Tops" },
+    { keywords: ["skirt", "skirts"], category: "Women's Clothing", subcategory: "Skirts" },
+    { keywords: ["sweater", "sweaters", "cardigan"], subcategory: "Sweaters" },
+    { keywords: ["shoes", "sneakers", "footwear", "running shoes", "boots", "loafers"], category: "Shoes" },
+    { keywords: ["headphones", "earbuds", "earphones", "headset"], category: "Electronics", subcategory: "Headphones" },
+    { keywords: ["keyboard", "keyboards"], category: "Electronics", subcategory: "Keyboards" },
+    { keywords: ["speaker", "speakers", "soundbar"], category: "Electronics", subcategory: "Speakers" },
+    { keywords: ["monitor", "monitors", "display", "screen"], category: "Electronics", subcategory: "Monitors" },
+    { keywords: ["webcam", "webcams"], category: "Electronics", subcategory: "Webcams" },
+    { keywords: ["phone", "phones", "mobile", "mobiles", "smartphone", "smartphones"], category: "Mobiles" },
+    { keywords: ["laptop", "laptops", "notebook", "notebooks", "ultrabook"], category: "Laptops" },
+    { keywords: ["watch", "watches", "smartwatch"], category: "Watches" },
+    { keywords: ["beauty", "cream", "shampoo", "perfume", "mist", "makeup", "cosmetics"], category: "Beauty" },
+    { keywords: ["blender", "kettle", "pan", "cookware", "pot", "toaster", "kitchen"], category: "Home & Kitchen" },
+    { keywords: ["coffee", "salt", "pepper", "tea", "grocery", "food", "snacks"], category: "Grocery" },
+    { keywords: ["yoga", "dumbbell", "tent", "racket", "sports", "camping"], category: "Sports" },
+    { keywords: ["book", "books", "novel", "novels", "biography", "memoir", "cookbook"], category: "Books" },
+    { keywords: ["toy", "toys", "lego", "drone", "blocks", "puzzle", "board game"], category: "Toys" },
+    { keywords: ["furniture", "chair", "table", "desk", "bookshelf"], category: "Furniture" },
+    { keywords: ["accessories", "sunglasses", "belt", "backpack", "beanie"], category: "Accessories" }
+  ];
+
+  for (const map of mappings) {
+    for (const kw of map.keywords) {
+      const regex = new RegExp(`\\b${kw}\\b`, 'i');
+      if (regex.test(query)) {
+        if (map.category) parsed.category = map.category;
+        if (map.subcategory) parsed.subcategory = map.subcategory;
+        
+        // Refine Men/Women Clothing categories if category is not explicitly set
+        if (parsed.subcategory && !parsed.category) {
+          if (parsed.gender === "Women") {
+            parsed.category = "Women's Clothing";
+          } else if (parsed.gender === "Men") {
+            parsed.category = "Men's Clothing";
+          } else {
+            parsed.category = "Men's Clothing"; 
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  // Adjust "cheap" value relative to parsed category
+  if (parsed.maxPrice === 100 && parsed.category) {
+    if (parsed.category === "Laptops") parsed.maxPrice = 800;
+    else if (parsed.category === "Mobiles") parsed.maxPrice = 400;
+    else if (parsed.category === "Grocery") parsed.maxPrice = 15;
+    else if (parsed.category === "Books") parsed.maxPrice = 30;
+  }
+
+  return parsed;
+};
+
+// AI Vector & Hybrid Search Controller
 export const searchProductsVector = async (
   req: Request,
   res: Response,
@@ -317,17 +454,18 @@ export const searchProductsVector = async (
 ): Promise<void> => {
   try {
     const search = req.query.search as string;
-    const category = req.query.category as string;
+    const categoryFilter = req.query.category as string; // From UI dropdown category select
     const page = parseInt(req.query.page as string, 10) || 1;
     const limit = parseInt(req.query.limit as string, 10) || 12;
-    const threshold = parseFloat(req.query.threshold as string) || 0.5;
 
     if (!search) {
-      throw new BadRequestError('Search query parameter is required for semantic vector search');
+      throw new BadRequestError('Search query parameter is required for hybrid search');
     }
 
     const startTime = performance.now();
-    const cacheKey = `products:vector:search_${search.replace(/\s+/g, '_')}:cat_${category || 'all'}:threshold_${threshold}:page_${page}:limit_${limit}`;
+    
+    // Include categoryFilter inside cacheKey so categories selected in dropdown are isolated
+    const cacheKey = `products:hybrid:search_${search.replace(/\s+/g, '_')}:cat_${categoryFilter || 'all'}:page_${page}:limit_${limit}`;
 
     // Check Redis cache first
     const cachedResult = await getCache(cacheKey);
@@ -344,106 +482,143 @@ export const searchProductsVector = async (
       return;
     }
 
-    // Generate query embedding vector matching pre-seeded product embeddings
-    const queryVector = getQueryEmbedding(search, 384);
-
-    let products: any[] = [];
-    let total = 0;
-
-    // Use local fallback in-memory cosine ranking (default)
-    const isLocal = true;
-
-    if (!isLocal) {
-      // Production Atlas Aggregation pipeline with index pre-filters and meta scores
-      const vectorSearchStage: any = {
-        index: 'vector_index',
-        path: 'vectorEmbedding',
-        queryVector: queryVector,
-        numCandidates: 100,
-        limit: limit * page,
-      };
-
-      if (category) {
-        vectorSearchStage.filter = { category };
-      }
-
-      const pipeline: any[] = [
-        { $vectorSearch: vectorSearchStage },
-        {
-          $addFields: {
-            score: { $meta: 'vectorSearchScore' },
-          },
-        },
-        {
-          $match: {
-            score: { $gte: threshold },
-          },
-        },
-      ];
-
-      const results = await Product.aggregate(pipeline);
-      total = results.length;
-      products = results.slice((page - 1) * limit, page * limit);
-    } else {
-      // Local fallback: Retrieve matching category products and score cosine similarities
-      const filter: any = {};
-      if (category) {
-        filter.category = category;
-      }
-
-      const candidates = await Product.find(
-        { ...filter, vectorEmbedding: { $exists: true, $ne: null } },
-        { name: 1, description: 1, price: 1, stock: 1, category: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
-      );
-
-      const queryWords = search.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-      const scoredCandidates = candidates
-        .map((product) => {
-          const productEmbedding = product.vectorEmbedding || [];
-          let score = queryVector.reduce((sum, val, idx) => sum + val * (productEmbedding[idx] || 0), 0);
-
-          // Boost similarity score if product text matches query keywords to simulate semantic matching
-          let matches = 0;
-          const textToMatch = `${product.name} ${product.description} ${product.tags.join(' ')}`.toLowerCase();
-          for (const word of queryWords) {
-            // Basic stem check for plurals (e.g. "shirts" -> "shirt", "headphones" -> "headphone")
-            const wordStem = word.endsWith('s') && word.length > 3 ? word.slice(0, -1) : word;
-            if (textToMatch.includes(word) || textToMatch.includes(wordStem)) {
-              matches++;
-            }
-          }
-          if (matches > 0) {
-            score = 0.52 + (matches * 0.08) + (score * 0.1);
-          } else {
-            score = 0.2 + Math.abs(score * 0.15);
-          }
-
-          return {
-            ...product.toObject(),
-            score: parseFloat(Math.min(0.99, score).toFixed(4)),
-          };
-        })
-        .filter((candidate) => candidate.score >= threshold);
-
-      // Sort by similarity descending
-      scoredCandidates.sort((a, b) => b.score - a.score);
-
-      total = scoredCandidates.length;
-      products = scoredCandidates.slice((page - 1) * limit, page * limit);
+    // 1. AI Query Parsing
+    const parsedQuery = parseQueryUnderstanding(search);
+    
+    // Override parsed category with UI select filter if categoryFilter is explicitly set
+    if (categoryFilter) {
+      parsedQuery.category = categoryFilter;
     }
 
+    const queryVector = getQueryEmbedding(search, 384);
+    const queryWords = search.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+
+    let candidates: any[] = [];
+    let layerUsed = "Direct Metadata Match";
+
+    // 2. Metadata Filtering Layers (Layered Fallback)
+    
+    // Layer 1: Strict match using parsed category, subcategory, brand, gender, and price range
+    const filterQuery: any = { vectorEmbedding: { $exists: true, $ne: null } };
+    if (parsedQuery.category) {
+      filterQuery.category = parsedQuery.category;
+    }
+    if (parsedQuery.subcategory) {
+      filterQuery.subcategory = parsedQuery.subcategory;
+    }
+    if (parsedQuery.brand) {
+      filterQuery.brand = parsedQuery.brand;
+    }
+    if (parsedQuery.gender) {
+      filterQuery.gender = parsedQuery.gender;
+    }
+    if (parsedQuery.color) {
+      filterQuery.color = parsedQuery.color;
+    }
+    if (parsedQuery.maxPrice || parsedQuery.minPrice) {
+      filterQuery.price = {};
+      if (parsedQuery.maxPrice) filterQuery.price.$lte = parsedQuery.maxPrice;
+      if (parsedQuery.minPrice) filterQuery.price.$gte = parsedQuery.minPrice;
+    }
+
+    candidates = await Product.find(
+      filterQuery,
+      { name: 1, description: 1, price: 1, stock: 1, category: 1, subcategory: 1, brand: 1, color: 1, gender: 1, material: 1, rating: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
+    );
+
+    // Layer 2: Fall back to category-only filter if strict match is empty
+    if (candidates.length === 0 && parsedQuery.category) {
+      layerUsed = "Category Fallback Match";
+      candidates = await Product.find(
+        { category: parsedQuery.category, vectorEmbedding: { $exists: true, $ne: null } },
+        { name: 1, description: 1, price: 1, stock: 1, category: 1, subcategory: 1, brand: 1, color: 1, gender: 1, material: 1, rating: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
+      );
+    }
+
+    // Layer 3: Fall back to all products (broad semantic search) if category-only is empty or no category detected
+    if (candidates.length === 0) {
+      layerUsed = "Global Fallback Match";
+      candidates = await Product.find(
+        { vectorEmbedding: { $exists: true, $ne: null } },
+        { name: 1, description: 1, price: 1, stock: 1, category: 1, subcategory: 1, brand: 1, color: 1, gender: 1, material: 1, rating: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
+      );
+    }
+
+    // 3. Hybrid Ranking Score Calculation
+    const scoredCandidates = candidates.map((product) => {
+      const productEmbedding = product.vectorEmbedding || [];
+      const vectorScore = queryVector.reduce((sum, val, idx) => sum + val * (productEmbedding[idx] || 0), 0);
+
+      // Exact title matches boost
+      const prodNameLower = product.name.toLowerCase();
+      const searchLower = search.toLowerCase();
+      let titleScore = 0;
+      if (prodNameLower === searchLower) {
+        titleScore = 1.0;
+      } else if (prodNameLower.startsWith(searchLower)) {
+        titleScore = 0.8;
+      } else if (prodNameLower.includes(searchLower)) {
+        titleScore = 0.5;
+      }
+
+      // Category / Subcategory exact matches boost
+      let categoryMatchScore = 0;
+      if (parsedQuery.category && product.category === parsedQuery.category) {
+        categoryMatchScore += 0.6;
+      }
+      if (parsedQuery.subcategory && product.subcategory === parsedQuery.subcategory) {
+        categoryMatchScore += 0.4;
+      }
+
+      // Keyword matches boost
+      let matches = 0;
+      const textToMatch = `${product.name} ${product.description} ${product.subcategory || ''} ${product.brand || ''} ${product.color || ''} ${product.material || ''} ${product.tags.join(' ')}`.toLowerCase();
+      for (const word of queryWords) {
+        const wordStem = word.endsWith('s') && word.length > 3 ? word.slice(0, -1) : word;
+        if (textToMatch.includes(word) || textToMatch.includes(wordStem)) {
+          matches++;
+        }
+      }
+      const keywordScore = queryWords.length > 0 ? (matches / queryWords.length) : 0.0;
+
+      // Rating/Popularity component
+      const ratingScore = (product.rating || 4.0) / 5.0;
+
+      // Combined Hybrid Search Ranking formula
+      // Weights: 40% Title, 25% Category Match, 15% Keywords, 15% Vector Similarity, 5% Rating
+      const finalScore = (titleScore * 0.40) + (categoryMatchScore * 0.25) + (keywordScore * 0.15) + (vectorScore * 0.15) + (ratingScore * 0.05);
+
+      return {
+        ...product.toObject(),
+        score: parseFloat(Math.min(0.99, finalScore).toFixed(4)),
+      };
+    });
+
+    // Sort by hybrid score descending
+    scoredCandidates.sort((a, b) => b.score - a.score);
+
+    // Limit returned products list
+    const total = scoredCandidates.length;
+    const products = scoredCandidates.slice((page - 1) * limit, page * limit);
     const pages = Math.ceil(total / limit);
+
     const responsePayload = {
       products,
       total,
       pages,
+      telemetry: {
+        parsedQuery,
+        latencyMs: 0, // Filled after performance metrics calculations
+        layerUsed,
+      }
     };
-
-    // Store fetched record list back into cache (TTL: 1 hour)
-    await setCache(cacheKey, JSON.stringify(responsePayload), 3600);
 
     const endTime = performance.now();
     const latency = parseFloat((endTime - startTime).toFixed(2));
+    responsePayload.telemetry.latencyMs = latency;
+
+    // Cache the response payload (1 hour)
+    await setCache(cacheKey, JSON.stringify(responsePayload), 3600);
 
     res.setHeader('X-Cache', isRedisConnected() ? 'MISS' : 'BYPASS');
     res.setHeader('X-Response-Time', `${latency}ms`);

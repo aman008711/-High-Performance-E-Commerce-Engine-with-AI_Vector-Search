@@ -143,42 +143,82 @@ function App() {
     setCouponError('');
     setCouponSuccess('');
     
-    // Simulated coupon check locally (to be replaced by API call in Commit 28)
-    setTimeout(() => {
-      setCalculating(false);
-      const uppercaseCode = couponInput.toUpperCase();
-      if (['SAVE10', 'SAVE20', 'FREESHIP'].includes(uppercaseCode)) {
-        let pct = 10;
-        if (uppercaseCode === 'SAVE20') pct = 20;
-        if (uppercaseCode === 'FREESHIP') pct = 15;
-        
-        const subtotal = totals.subtotal;
-        const discountApplied = subtotal * (pct / 100);
-        setTotals({
-          subtotal,
-          discountPercent: pct,
-          discountApplied,
-          total: Math.max(0, subtotal - discountApplied)
-        });
-        setCouponSuccess(`Coupon ${uppercaseCode} applied successfully! (${pct}% off)`);
-      } else {
-        setCouponError(`Invalid coupon code: ${couponInput}`);
+    try {
+      const itemsPayload = cart.map(item => ({
+        productId: item.product._id,
+        quantity: item.quantity
+      }));
+      
+      const response = await api.calculateCart(itemsPayload, couponInput);
+      
+      // Update totals
+      setTotals({
+        subtotal: response.data.subtotal,
+        discountPercent: response.data.discountPercent,
+        discountApplied: response.data.discountApplied,
+        total: response.data.total
+      });
+
+      // Update telemetry
+      const newLog = {
+        method: 'POST',
+        path: '/api/checkout/calculate',
+        status: response.cacheStatus,
+        latency: `${response.latency}ms`,
+        speed: (response.latency < 50 ? 'fast' : 'slow') as 'fast' | 'slow'
+      };
+      setLogs(prev => [newLog, ...prev.slice(0, 19)]);
+      setAvgLatency(prev => parseFloat(((prev * 0.9) + (response.latency * 0.1)).toFixed(1)));
+      if (response.cacheStatus === 'HIT') {
+        setCacheHitRate(prev => parseFloat(((prev * 0.95) + 5).toFixed(1)));
+      } else if (response.cacheStatus === 'MISS') {
+        setCacheHitRate(prev => parseFloat(((prev * 0.95)).toFixed(1)));
       }
-    }, 400);
+
+      setCouponSuccess(`Coupon "${response.data.discountCode}" applied successfully! (${response.data.discountPercent}% off)`);
+    } catch (err: any) {
+      setCouponError(err.message || 'Failed to apply coupon');
+    } finally {
+      setCalculating(false);
+    }
   };
 
   const handleCheckout = async () => {
     setCheckingOut(true);
-    // Simulated checkout locally (to be replaced by API call in Commit 28)
-    setTimeout(() => {
-      setCheckingOut(false);
-      alert('Order Placed Successfully! (Simulated)');
+    try {
+      const itemsPayload = cart.map(item => ({
+        productId: item.product._id,
+        quantity: item.quantity
+      }));
+
+      const response = await api.placeOrder(itemsPayload, couponInput || undefined);
+      
+      // Update telemetry
+      const newLog = {
+        method: 'POST',
+        path: '/api/checkout/place-order',
+        status: response.cacheStatus,
+        latency: `${response.latency}ms`,
+        speed: (response.latency < 50 ? 'fast' : 'slow') as 'fast' | 'slow'
+      };
+      setLogs(prev => [newLog, ...prev.slice(0, 19)]);
+      setAvgLatency(prev => parseFloat(((prev * 0.9) + (response.latency * 0.1)).toFixed(1)));
+      
+      alert(`Order Placed Successfully! Order ID: ${response.data._id}`);
+      
       setCart([]);
       setTotals({ subtotal: 0, discountPercent: 0, discountApplied: 0, total: 0 });
       setCouponInput('');
       setCouponSuccess('');
       setIsCartOpen(false);
-    }, 800);
+      
+      // Re-fetch products to show updated stock level values on the catalog UI page!
+      await fetchProducts();
+    } catch (err: any) {
+      alert('Checkout Failed: ' + (err.message || err));
+    } finally {
+      setCheckingOut(false);
+    }
   };
 
   // Populate drawer form inputs when edit targets update

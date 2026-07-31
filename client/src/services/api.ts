@@ -161,4 +161,19 @@ export const api = {
       body: JSON.stringify({ username, password }),
     });
   },
+
+  // Checkout & Cart calculations
+  calculateCart: (items: Array<{ productId: string; quantity: number }>, discountCode?: string) => {
+    return request<any>('/checkout/calculate', {
+      method: 'POST',
+      body: JSON.stringify({ items, discountCode }),
+    });
+  },
+
+  placeOrder: (items: Array<{ productId: string; quantity: number }>, discountCode?: string) => {
+    return request<any>('/checkout/place-order', {
+      method: 'POST',
+      body: JSON.stringify({ items, discountCode }),
+    });
+  },
 };

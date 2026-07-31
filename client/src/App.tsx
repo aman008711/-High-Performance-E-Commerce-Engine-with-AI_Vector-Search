@@ -12,7 +12,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Edit,
-  Trash2
+  Trash2,
+  ShoppingCart
 } from 'lucide-react';
 const getLogTagClass = (status: string): string => {
   const s = status.toLowerCase();
@@ -74,6 +75,111 @@ function App() {
   const [logs, setLogs] = useState<Array<{ method: string; path: string; status: string; latency: string; speed: 'fast' | 'slow' }>>([
     { method: 'GET', path: '/api/health', status: 'BYPASS', latency: '4.5ms', speed: 'fast' }
   ]);
+
+  // Shopping Cart States
+  const [cart, setCart] = useState<Array<{ product: ApiProduct; quantity: number }>>([]);
+  const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
+  const [couponInput, setCouponInput] = useState<string>('');
+  const [couponSuccess, setCouponSuccess] = useState<string>('');
+  const [couponError, setCouponError] = useState<string>('');
+  const [calculating, setCalculating] = useState<boolean>(false);
+  const [checkingOut, setCheckingOut] = useState<boolean>(false);
+  const [totals, setTotals] = useState({
+    subtotal: 0,
+    discountPercent: 0,
+    discountApplied: 0,
+    total: 0
+  });
+
+  // Calculate totals client-side as fallback before backend calculation is fetched
+  useEffect(() => {
+    const subtotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+    setTotals(prev => ({
+      ...prev,
+      subtotal,
+      total: Math.max(0, subtotal - prev.discountApplied)
+    }));
+  }, [cart]);
+
+  const addToCart = (product: ApiProduct) => {
+    setCart(prev => {
+      const existing = prev.find(item => item.product._id === product._id);
+      if (existing) {
+        if (existing.quantity >= product.stock) return prev; // Limit to available stock
+        return prev.map(item => 
+          item.product._id === product._id 
+            ? { ...item, quantity: item.quantity + 1 } 
+            : item
+        );
+      }
+      return [...prev, { product, quantity: 1 }];
+    });
+    setIsCartOpen(true);
+  };
+
+  const removeFromCart = (productId: string) => {
+    setCart(prev => prev.filter(item => item.product._id !== productId));
+    setCouponSuccess('');
+    setCouponError('');
+  };
+
+  const updateCartQuantity = (productId: string, quantity: number) => {
+    if (quantity <= 0) {
+      removeFromCart(productId);
+      return;
+    }
+    setCart(prev => prev.map(item => {
+      if (item.product._id === productId) {
+        const targetQty = Math.min(quantity, item.product.stock);
+        return { ...item, quantity: targetQty };
+      }
+      return item;
+    }));
+  };
+
+  const applyCoupon = async () => {
+    if (!couponInput) return;
+    setCalculating(true);
+    setCouponError('');
+    setCouponSuccess('');
+    
+    // Simulated coupon check locally (to be replaced by API call in Commit 28)
+    setTimeout(() => {
+      setCalculating(false);
+      const uppercaseCode = couponInput.toUpperCase();
+      if (['SAVE10', 'SAVE20', 'FREESHIP'].includes(uppercaseCode)) {
+        let pct = 10;
+        if (uppercaseCode === 'SAVE20') pct = 20;
+        if (uppercaseCode === 'FREESHIP') pct = 15;
+        
+        const subtotal = totals.subtotal;
+        const discountApplied = subtotal * (pct / 100);
+        setTotals({
+          subtotal,
+          discountPercent: pct,
+          discountApplied,
+          total: Math.max(0, subtotal - discountApplied)
+        });
+        setCouponSuccess(`Coupon ${uppercaseCode} applied successfully! (${pct}% off)`);
+      } else {
+        setCouponError(`Invalid coupon code: ${couponInput}`);
+      }
+    }, 400);
+  };
+
+  const handleCheckout = async () => {
+    setCheckingOut(true);
+    // Simulated checkout locally (to be replaced by API call in Commit 28)
+    setTimeout(() => {
+      setCheckingOut(false);
+      alert('Order Placed Successfully! (Simulated)');
+      setCart([]);
+      setTotals({ subtotal: 0, discountPercent: 0, discountApplied: 0, total: 0 });
+      setCouponInput('');
+      setCouponSuccess('');
+      setIsCartOpen(false);
+    }, 800);
+  };
 
   // Populate drawer form inputs when edit targets update
   useEffect(() => {
@@ -436,7 +542,7 @@ function App() {
             {activeTab === 'logs' && 'System Telemetry Logs'}
           </h2>
 
-          <div className="telemetry-row">
+          <div className="telemetry-row" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
             <div className="telemetry-item">
               <span className="telemetry-val text-glow" style={{ color: 'var(--success)' }}>{avgLatency} ms</span>
               <span className="telemetry-lbl">Avg Response Time</span>
@@ -445,6 +551,48 @@ function App() {
               <span className="telemetry-val" style={{ color: 'var(--primary-light)' }}>{cacheHitRate}%</span>
               <span className="telemetry-lbl">Cache Hit Ratio</span>
             </div>
+            <button 
+              onClick={() => setIsCartOpen(true)}
+              style={{
+                backgroundColor: 'var(--bg-card)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 'var(--radius-sm)',
+                padding: '0.5rem 0.9rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                cursor: 'pointer',
+                color: 'var(--text-main)',
+                position: 'relative',
+                transition: 'all 0.2s',
+              }}
+              className="cart-trigger-btn"
+            >
+              <ShoppingCart size={15} color="var(--primary-light)" />
+              <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Cart</span>
+              {cart.length > 0 && (
+                <span 
+                  style={{
+                    position: 'absolute',
+                    top: '-6px',
+                    right: '-6px',
+                    backgroundColor: 'var(--danger)',
+                    color: '#fff',
+                    borderRadius: '50%',
+                    width: '16px',
+                    height: '16px',
+                    fontSize: '0.65rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 'bold',
+                    boxShadow: '0 0 6px var(--danger)',
+                  }}
+                >
+                  {cart.reduce((sum, item) => sum + item.quantity, 0)}
+                </span>
+              )}
+            </button>
           </div>
         </header>
 
@@ -644,11 +792,27 @@ function App() {
                       <div className="product-info">
                         <h4 className="product-name">{p.name}</h4>
                         <p className="product-desc">{p.description}</p>
-                        <div className="product-footer">
-                          <span className="product-price">${p.price.toFixed(2)}</span>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                           <span className={`product-stock ${p.stock < 50 ? 'low-stock' : ''}`}>
                             {p.stock === 0 ? 'Out of Stock' : `${p.stock} in stock`}
                           </span>
+                        </div>
+                        <div className="product-footer" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.6rem' }}>
+                          <span className="product-price">${p.price.toFixed(2)}</span>
+                          <button
+                            onClick={() => addToCart(p)}
+                            disabled={p.stock === 0}
+                            className="btn btn-primary"
+                            style={{
+                              padding: '0.35rem 0.75rem',
+                              fontSize: '0.8rem',
+                              background: p.stock === 0 ? 'var(--border-color)' : 'linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%)',
+                              cursor: p.stock === 0 ? 'not-allowed' : 'pointer',
+                              border: 'none',
+                            }}
+                          >
+                            Add to Cart
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -1097,6 +1261,230 @@ function App() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Shopping Cart Sidebar Drawer Overlay */}
+      {isCartOpen && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.65)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 1000,
+            display: 'flex',
+            justifyContent: 'flex-end',
+            animation: 'fade-in 0.2s ease-out'
+          }}
+          onClick={() => setIsCartOpen(false)}
+        >
+          <div 
+            style={{
+              width: '100%',
+              maxWidth: '450px',
+              height: '100%',
+              backgroundColor: 'var(--bg-card)',
+              borderLeft: '1px solid var(--border-color)',
+              boxShadow: '-10px 0 30px rgba(0,0,0,0.5)',
+              display: 'flex',
+              flexDirection: 'column',
+              padding: '1.5rem',
+              position: 'relative',
+              animation: 'slide-in-drawer 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Drawer Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <ShoppingCart size={20} color="var(--primary-light)" />
+                Your Shopping Cart
+              </h3>
+              <button 
+                onClick={() => setIsCartOpen(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  fontSize: '1.5rem',
+                  cursor: 'pointer',
+                  padding: '0.2rem'
+                }}
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Cart Items List */}
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem', paddingRight: '0.25rem' }}>
+              {cart.length === 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
+                  <ShoppingCart size={48} style={{ opacity: 0.2, marginBottom: '1rem' }} />
+                  <p>Your cart is empty.</p>
+                  <button 
+                    onClick={() => { setIsCartOpen(false); setActiveTab('catalog'); }}
+                    className="btn btn-primary"
+                    style={{ marginTop: '1rem' }}
+                  >
+                    Browse Catalog
+                  </button>
+                </div>
+              ) : (
+                cart.map((item) => (
+                  <div 
+                    key={item.product._id} 
+                    style={{
+                      display: 'flex',
+                      gap: '0.75rem',
+                      backgroundColor: 'var(--bg-main)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '0.75rem',
+                      position: 'relative'
+                    }}
+                  >
+                    <img 
+                      src={item.product.imageUrl} 
+                      alt={item.product.name} 
+                      style={{ width: '60px', height: '60px', borderRadius: '4px', objectFit: 'cover' }}
+                    />
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-main)', fontWeight: 600 }}>
+                          {item.product.name}
+                        </h4>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                          Unit Price: ${item.product.price.toFixed(2)}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.25rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--border-color)', borderRadius: '4px', overflow: 'hidden' }}>
+                          <button 
+                            onClick={() => updateCartQuantity(item.product._id, item.quantity - 1)}
+                            style={{ border: 'none', backgroundColor: 'transparent', padding: '0.2rem 0.5rem', color: 'var(--text-main)', cursor: 'pointer' }}
+                          >
+                            -
+                          </button>
+                          <span style={{ padding: '0 0.5rem', fontSize: '0.85rem', fontWeight: 600, minWidth: '20px', textAlign: 'center' }}>
+                            {item.quantity}
+                          </span>
+                          <button 
+                            onClick={() => updateCartQuantity(item.product._id, item.quantity + 1)}
+                            style={{ border: 'none', backgroundColor: 'transparent', padding: '0.2rem 0.5rem', color: 'var(--text-main)', cursor: 'pointer' }}
+                          >
+                            +
+                          </button>
+                        </div>
+                        <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--primary-light)' }}>
+                          ${(item.product.price * item.quantity).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => removeFromCart(item.product._id)}
+                      style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px',
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--danger)',
+                        cursor: 'pointer',
+                        padding: '0.2rem'
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Drawer Footer: Coupon and Calculation details */}
+            {cart.length > 0 && (
+              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.25rem', marginTop: '1rem' }}>
+                {/* Coupon Code Input */}
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                  <input 
+                    type="text" 
+                    placeholder="ENTER COUPON (e.g. SAVE20)" 
+                    value={couponInput}
+                    onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                    style={{
+                      flex: 1,
+                      backgroundColor: 'var(--bg-main)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '0.5rem',
+                      fontSize: '0.8rem',
+                      outline: 'none',
+                      color: 'var(--text-main)'
+                    }}
+                  />
+                  <button 
+                    onClick={applyCoupon}
+                    disabled={calculating}
+                    className="btn"
+                    style={{
+                      padding: '0.5rem 1rem',
+                      fontSize: '0.8rem',
+                      backgroundColor: 'var(--bg-main)',
+                      border: '1px solid var(--border-color)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {calculating ? '...' : 'Apply'}
+                  </button>
+                </div>
+
+                {couponError && <p style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '-0.75rem', marginBottom: '0.75rem' }}>{couponError}</p>}
+                {couponSuccess && <p style={{ color: 'var(--success)', fontSize: '0.75rem', marginTop: '-0.75rem', marginBottom: '0.75rem' }}>{couponSuccess}</p>}
+
+                {/* Totals Summary */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.85rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Subtotal</span>
+                    <span>${totals.subtotal.toFixed(2)}</span>
+                  </div>
+                  {totals.discountApplied > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--success)' }}>
+                      <span>Discount ({totals.discountPercent}%)</span>
+                      <span>-${totals.discountApplied.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '0.25rem' }}>
+                    <span>Total Amount</span>
+                    <span className="text-glow">${totals.total.toFixed(2)}</span>
+                  </div>
+                </div>
+
+                {/* Checkout Trigger Button */}
+                <button 
+                  onClick={handleCheckout}
+                  disabled={checkingOut}
+                  className="btn btn-primary"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    fontSize: '0.95rem',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    fontWeight: 600,
+                    background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%)',
+                    boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
+                  }}
+                >
+                  {checkingOut ? 'Processing Checkout...' : 'Place Order'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

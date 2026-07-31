@@ -933,5 +933,12 @@ h1, h2, h3, h4, h5, h6 {
   to { transform: translateX(0); }
 }
 
+.cart-trigger-btn:hover {
+  background-color: var(--bg-main) !important;
+  border-color: var(--primary-light) !important;
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.25);
+  transform: translateY(-1px);
+}
+
 
 

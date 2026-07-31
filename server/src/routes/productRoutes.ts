@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { 
-  getProducts, 
+import {
+  getProducts,
   getProduct,
   createProduct,
   updateProduct,

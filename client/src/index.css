@@ -673,9 +673,9 @@ h1, h2, h3, h4, h5, h6 {
   position: absolute;
   top: 10px;
   left: 10px;
-  background-color: rgba(6, 7, 10, 0.75);
+  background-color: rgba(6, 7, 10, 0.8);
   backdrop-filter: blur(4px);
-  color: var(--text-main);
+  color: #f8fafc !important;
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 0.75rem;
@@ -979,8 +979,13 @@ body.light-theme .nav-item.active {
   background: linear-gradient(90deg, rgba(139, 92, 246, 0.08) 0%, rgba(139, 92, 246, 0.01) 100%);
 }
 
-body.light-theme input, body.light-theme select {
+/* Global input text and placeholder readability variables */
+input, select, textarea {
   color: var(--text-main) !important;
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--text-muted) !important;
 }
 
 /* Flying product particle animations */

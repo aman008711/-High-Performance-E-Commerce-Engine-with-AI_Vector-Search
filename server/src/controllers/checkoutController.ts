@@ -7,6 +7,7 @@ import { Order } from '../models/Order';
 import { BadRequestError, NotFoundError } from '../utils/errors';
 import { getCache, setCache, delCache, delCachePattern } from '../config/redis';
 import { warmCache } from './productController';
+import { getIO } from '../index';
 
 export interface CartItemInput {
   productId: string;
@@ -222,6 +223,7 @@ export const placeOrder = async (
         name: product.name,
         price: product.price,
         quantity: item.quantity,
+        newStock: product.stock,
       });
     }
 
@@ -265,6 +267,16 @@ export const placeOrder = async (
     // Commit Transaction
     await session.commitTransaction();
     session.endSession();
+
+    // Broadcast updated inventory levels to all active clients via Socket.io
+    const io = getIO();
+    if (io) {
+      io.emit('inventoryUpdate', orderItems.map(item => ({
+        productId: item.productId.toString(),
+        newStock: item.newStock
+      })));
+      console.log('📡 [Socket] Broadcasted real-time stock levels:', orderItems.map(i => `${i.name}: ${i.newStock}`));
+    }
 
     // Invalidate Redis caches for all purchased items & list catalog page views (post-commit)
     for (const item of orderItems) {

@@ -3,6 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import mongoose from 'mongoose';
+import http from 'http';
+import { Server as SocketIOServer } from 'socket.io';
 import { env } from './config/env';
 import { connectDB } from './config/db';
 import { isRedisConnected } from './config/redis';
@@ -10,6 +12,12 @@ import productRouter from './routes/productRoutes';
 import authRouter from './routes/authRoutes';
 import checkoutRouter from './routes/checkoutRoutes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+
+let ioInstance: SocketIOServer | null = null;
+
+export const getIO = (): SocketIOServer | null => {
+  return ioInstance;
+};
 
 const app = express();
 
@@ -75,7 +83,23 @@ const startServer = async () => {
     // Connect to MongoDB
     await connectDB();
 
-    const server = app.listen(env.PORT, () => {
+    const server = http.createServer(app);
+
+    ioInstance = new SocketIOServer(server, {
+      cors: {
+        origin: '*',
+        methods: ['GET', 'POST']
+      }
+    });
+
+    ioInstance.on('connection', (socket) => {
+      console.log(`🔌 [Socket] Client connected: ${socket.id}`);
+      socket.on('disconnect', () => {
+        console.log(`🔌 [Socket] Client disconnected: ${socket.id}`);
+      });
+    });
+
+    server.listen(env.PORT, () => {
       console.log(`🚀 [Server] Running in ${env.NODE_ENV} mode on port ${env.PORT}`);
     });
 

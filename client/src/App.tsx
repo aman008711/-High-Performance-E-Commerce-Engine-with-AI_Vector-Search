@@ -146,8 +146,8 @@ function App() {
   const [loginPassword, setLoginPassword] = useState<string>('');
   const [loginError, setLoginError] = useState<string>('');
 
-  // AI Semantic Vector Search state toggle
-  const [isVectorSearch, setIsVectorSearch] = useState<boolean>(false);
+  // AI Semantic Vector Search state toggle (true by default to show AI Telemetry)
+  const [isVectorSearch, setIsVectorSearch] = useState<boolean>(true);
 
   // Form CRUD bindings
   const [formName, setFormName] = useState<string>('');
@@ -560,7 +560,7 @@ function App() {
   const fetchProducts = async () => {
     setLoading(true);
     try {
-      const fetchPromise = (isVectorSearch && debouncedSearchTerm)
+      const fetchPromise = debouncedSearchTerm
         ? api.searchProductsVector({
             page: currentPage,
             limit: 12,
@@ -571,7 +571,7 @@ function App() {
             page: currentPage,
             limit: 12,
             category: selectedCategory || undefined,
-            search: debouncedSearchTerm || undefined
+            search: undefined
           });
 
       const response = await fetchPromise;
@@ -585,7 +585,7 @@ function App() {
         setSearchTelemetry(null);
       }
 
-      const basePath = (isVectorSearch && debouncedSearchTerm) ? '/api/products/search/vector' : '/api/products';
+      const basePath = debouncedSearchTerm ? '/api/products/search/vector' : '/api/products';
       const pathStr = `${basePath}?page=${currentPage}&limit=12` + 
                       (selectedCategory ? `&category=${selectedCategory}` : '') +
                       (debouncedSearchTerm ? `&search=${encodeURIComponent(debouncedSearchTerm)}` : '');
@@ -1055,9 +1055,9 @@ function App() {
                     <input 
                       type="checkbox" 
                       checked={isVectorSearch} 
-                      onChange={(e) => { setIsVectorSearch(e.target.checked); setCurrentPage(1); }} 
+                      onChange={(e) => { setIsVectorSearch(e.target.checked); }} 
                     />
-                    AI Semantic Search (Vector)
+                    Show AI Search Telemetry
                   </label>
                   <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                     {totalProducts ? `${totalProducts} products` : 'No products'}

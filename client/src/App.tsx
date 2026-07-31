@@ -92,6 +92,21 @@ function App() {
     total: 0
   });
 
+  // Theme states
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+
+  const toggleTheme = () => {
+    setTheme(prev => {
+      const next = prev === 'dark' ? 'light' : 'dark';
+      if (next === 'light') {
+        document.body.classList.add('light-theme');
+      } else {
+        document.body.classList.remove('light-theme');
+      }
+      return next;
+    });
+  };
+
   // Recommendations States
   const [recommendations, setRecommendations] = useState<ApiProduct[]>([]);
 
@@ -633,6 +648,34 @@ function App() {
               <span className="dot yellow"></span>
               Standby
             </span>
+          </div>
+        </div>
+
+        {/* Glassmorphic Theme Toggler */}
+        <div style={{ marginTop: '1.25rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.25rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+              {theme === 'dark' ? 'Cyber Dark' : 'Glass Light'}
+            </span>
+            <button
+              onClick={toggleTheme}
+              style={{
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '30px',
+                padding: '0.35rem 0.75rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                cursor: 'pointer',
+                color: 'var(--text-main)',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+              }}
+            >
+              {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+            </button>
           </div>
         </div>
       </aside>

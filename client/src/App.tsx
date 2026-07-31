@@ -91,6 +91,35 @@ function App() {
     total: 0
   });
 
+  // Recommendations States
+  const [recommendations, setRecommendations] = useState<ApiProduct[]>([]);
+
+  // Fetch product recommendations based on last added item
+  useEffect(() => {
+    if (cart.length === 0) {
+      setRecommendations([]);
+      return;
+    }
+
+    const fetchRecommendations = async () => {
+      try {
+        const lastCartItem = cart[cart.length - 1];
+        const response = await api.getProductRecommendations(lastCartItem.product._id);
+        
+        // Exclude items already in the cart
+        const cartIds = cart.map(item => item.product._id);
+        const filteredRecs = (response.data || []).filter((p: ApiProduct) => !cartIds.includes(p._id));
+        setRecommendations(filteredRecs);
+      } catch (error) {
+        console.error('Failed to load recommendations:', error);
+      }
+    };
+
+    // Debounce recommendation fetch slightly to avoid spamming calls
+    const timer = setTimeout(fetchRecommendations, 300);
+    return () => clearTimeout(timer);
+  }, [cart]);
+
   // Calculate totals client-side as fallback before backend calculation is fetched
   useEffect(() => {
     const subtotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
@@ -1444,6 +1473,68 @@ function App() {
                 ))
               )}
             </div>
+
+            {/* Recommendations Section */}
+            {cart.length > 0 && recommendations.length > 0 && (
+              <div style={{ marginTop: '1.25rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.25rem' }}>
+                <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.85rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600 }}>
+                  <Layers size={14} color="var(--success)" />
+                  People Also Viewed (AI Recommendations)
+                </h4>
+                
+                <div style={{ display: 'flex', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.5rem', scrollbarWidth: 'thin' }}>
+                  {recommendations.map((rec) => (
+                    <div 
+                      key={rec._id}
+                      style={{
+                        minWidth: '135px',
+                        width: '135px',
+                        backgroundColor: 'var(--bg-main)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 'var(--radius-sm)',
+                        padding: '0.5rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        gap: '0.4rem'
+                      }}
+                    >
+                      <img 
+                        src={rec.imageUrl} 
+                        alt={rec.name}
+                        style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '4px' }}
+                      />
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                        <div>
+                          <h5 style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={rec.name}>
+                            {rec.name}
+                          </h5>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary-light)' }}>
+                            ${rec.price.toFixed(2)}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => addToCart(rec)}
+                          disabled={rec.stock === 0}
+                          className="btn btn-primary"
+                          style={{
+                            width: '100%',
+                            padding: '0.25rem',
+                            fontSize: '0.7rem',
+                            marginTop: '0.4rem',
+                            border: 'none',
+                            background: rec.stock === 0 ? 'var(--border-color)' : 'linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%)',
+                            cursor: rec.stock === 0 ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          {rec.stock === 0 ? 'Out of Stock' : 'Add to Cart'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Drawer Footer: Coupon and Calculation details */}
             {cart.length > 0 && (

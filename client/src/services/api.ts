@@ -121,7 +121,25 @@ export const api = {
     if (params.search) query.append('search', params.search || '');
 
     const queryString = query.toString() ? `?${query.toString()}` : '';
-    return request<{ products: ApiProduct[]; total: number; pages: number }>(`/products/search/vector${queryString}`);
+    return request<{ 
+      products: ApiProduct[]; 
+      total: number; 
+      pages: number; 
+      telemetry?: {
+        parsedQuery: {
+          category?: string;
+          subcategory?: string;
+          brand?: string;
+          color?: string;
+          gender?: string;
+          material?: string;
+          maxPrice?: number;
+          minPrice?: number;
+        };
+        latencyMs: number;
+        layerUsed: string;
+      }
+    }>(`/products/search/vector${queryString}`);
   },
 
   getProduct: (id: string) => {

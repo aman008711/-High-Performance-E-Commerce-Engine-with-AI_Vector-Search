@@ -25,15 +25,113 @@ const getLogTagClass = (status: string): string => {
   return 'miss';
 };
 const CATEGORIES = [
-  'Electronics',
-  'Apparel & Fashion',
-  'Home & Kitchen',
-  'Sports & Outdoors',
-  'Beauty & Personal Care',
-  'Books',
-  'Automotive',
-  'Toys & Games',
+  "Men's Clothing",
+  "Women's Clothing",
+  "Shoes",
+  "Electronics",
+  "Mobiles",
+  "Laptops",
+  "Watches",
+  "Beauty",
+  "Home & Kitchen",
+  "Grocery",
+  "Sports",
+  "Books",
+  "Toys",
+  "Furniture",
+  "Accessories"
 ];
+
+// Typo Tolerance Dictionary words
+const DICTIONARY_WORDS = [
+  "t-shirt", "shirt", "jeans", "jacket", "hoodie", "dress", "top", "skirt", 
+  "sweater", "shoes", "sneakers", "boots", "loafers", "headphones", "keyboard", 
+  "speaker", "monitor", "webcam", "phone", "mobile", "smartphone", "laptop", 
+  "watch", "beauty", "cream", "shampoo", "perfume", "blender", "kettle", "pan", 
+  "cookware", "coffee", "salt", "pepper", "tea", "yoga", "dumbbell", "tent", 
+  "book", "toy", "lego", "drone", "furniture", "chair", "table", "desk", 
+  "sunglasses", "belt", "backpack", "beanie"
+];
+
+// Helper to compute Levenshtein distance
+const getLevenshteinDistance = (a: string, b: string): number => {
+  const matrix = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
+  for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
+  for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
+
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j] + 1, // deletion
+          matrix[i][j - 1] + 1, // insertion
+          matrix[i - 1][j - 1] + 1 // substitution
+        );
+      }
+    }
+  }
+  return matrix[a.length][b.length];
+};
+
+// Typo suggestion logic
+const getTypoSuggestion = (searchStr: string): string | null => {
+  if (!searchStr || searchStr.length < 3) return null;
+  const words = searchStr.toLowerCase().split(/\s+/);
+  let suggestionsMade = false;
+  const correctedWords = words.map(w => {
+    if (DICTIONARY_WORDS.includes(w) || w.length < 4) return w;
+    
+    let bestWord: string | null = null;
+    let bestDistance = 999;
+    
+    for (const dictWord of DICTIONARY_WORDS) {
+      const distance = getLevenshteinDistance(w, dictWord);
+      const maxAllowed = w.length > 6 ? 2 : 1;
+      if (distance <= maxAllowed && distance < bestDistance) {
+        bestDistance = distance;
+        bestWord = dictWord;
+      }
+    }
+    
+    if (bestWord) {
+      suggestionsMade = true;
+      return bestWord;
+    }
+    return w;
+  });
+
+  return suggestionsMade ? correctedWords.join(' ') : null;
+};
+
+// Keyword Highlighting Helper
+const highlightKeywords = (text: string, searchStr: string): React.ReactNode => {
+  if (!searchStr) return text;
+  const words = searchStr.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+  if (words.length === 0) return text;
+
+  const escWords = words.map(w => w.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'));
+  const patterns = escWords.map(w => w.endsWith('s') && w.length > 3 ? `${w}|${w.slice(0, -1)}` : w);
+  const regex = new RegExp(`\\b(${patterns.join('|')})\\b`, 'gi');
+
+  const parts = text.split(regex);
+  if (parts.length <= 1) return text;
+
+  return (
+    <>
+      {parts.map((part, index) => 
+        regex.test(part) ? (
+          <mark key={index} style={{ backgroundColor: 'rgba(139, 92, 246, 0.22)', color: 'var(--primary)', padding: '0 2px', borderRadius: '2px', fontWeight: 600 }}>
+            {part}
+          </mark>
+        ) : (
+          part
+        )
+      )}
+    </>
+  );
+};
 
 function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'catalog' | 'admin' | 'logs'>('dashboard');
@@ -70,6 +168,7 @@ function App() {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [searchTelemetry, setSearchTelemetry] = useState<any>(null);
 
   const [avgLatency, setAvgLatency] = useState<number>(12.4);
   const [cacheHitRate, setCacheHitRate] = useState<number>(94.8);
@@ -480,6 +579,11 @@ function App() {
       setProducts(response.data.products);
       setTotalProducts(response.data.total);
       setTotalPages(response.data.pages);
+      if (response.data && 'telemetry' in response.data) {
+        setSearchTelemetry(response.data.telemetry);
+      } else {
+        setSearchTelemetry(null);
+      }
 
       const basePath = (isVectorSearch && debouncedSearchTerm) ? '/api/products/search/vector' : '/api/products';
       const pathStr = `${basePath}?page=${currentPage}&limit=12` + 
@@ -961,6 +1065,118 @@ function App() {
                 </div>
               </div>
 
+              {/* Did you mean Suggestion */}
+              {searchTerm && getTypoSuggestion(searchTerm) && (
+                <div style={{ padding: '0.2rem 1.5rem 0.8rem 1.5rem', fontSize: '0.85rem', color: 'var(--text-main)' }}>
+                  Did you mean:{' '}
+                  <span 
+                    onClick={() => { setSearchTerm(getTypoSuggestion(searchTerm) || ''); setIsVectorSearch(true); }}
+                    style={{
+                      color: 'var(--primary)',
+                      textDecoration: 'underline',
+                      cursor: 'pointer',
+                      fontWeight: 600
+                    }}
+                  >
+                    {getTypoSuggestion(searchTerm)}
+                  </span>
+                  ?
+                </div>
+              )}
+
+              {/* Popular Searches when search input is empty */}
+              {!searchTerm && (
+                <div style={{ padding: '0.2rem 1.5rem 1rem 1.5rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.6rem', fontSize: '0.82rem' }}>
+                  <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Popular Searches:</span>
+                  {["t-shirt", "wireless earbuds", "gaming laptop", "running shoes", "chef knife"].map((term, idx) => (
+                    <span 
+                      key={idx} 
+                      onClick={() => { setSearchTerm(term); setIsVectorSearch(true); }}
+                      style={{
+                        cursor: 'pointer',
+                        backgroundColor: 'var(--bg-main)',
+                        border: '1px solid var(--border-color)',
+                        padding: '3px 10px',
+                        borderRadius: '12px',
+                        color: 'var(--primary)',
+                        fontWeight: 500,
+                        transition: 'all 0.2s ease'
+                      }}
+                      className="hover-glow"
+                    >
+                      {term}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Related Searches when search input is active */}
+              {searchTerm && (
+                <div style={{ padding: '0.2rem 1.5rem 0.8rem 1.5rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.6rem', fontSize: '0.82rem' }}>
+                  <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Related Searches:</span>
+                  {(searchTelemetry?.parsedQuery?.category === "Men's Clothing" || searchTelemetry?.parsedQuery?.category === "Women's Clothing"
+                    ? ["casual shirt", "denim jeans", "winter jacket", "leather belt"]
+                    : ["Electronics", "Laptops", "Mobiles"].includes(searchTelemetry?.parsedQuery?.category || '')
+                    ? ["mechanical keyboard", "bluetooth speaker", "smart watch", "laptop stand"]
+                    : searchTelemetry?.parsedQuery?.category === "Shoes"
+                    ? ["leather boots", "canvas sneakers", "athletic socks", "penny loafers"]
+                    : searchTelemetry?.parsedQuery?.category === "Grocery"
+                    ? ["dark roast coffee", "pink salt", "green tea", "english breakfast"]
+                    : searchTelemetry?.parsedQuery?.category === "Books"
+                    ? ["sci-fi novels", "cookbooks", "mystery thriller", "fantasy epics"]
+                    : ["t-shirt", "wireless earbuds", "running shoes", "coffee mug"]
+                  ).map((term, idx) => (
+                    <span 
+                      key={idx} 
+                      onClick={() => { setSearchTerm(term); setIsVectorSearch(true); }}
+                      style={{
+                        cursor: 'pointer',
+                        backgroundColor: 'var(--bg-main)',
+                        border: '1px solid var(--border-color)',
+                        padding: '3px 10px',
+                        borderRadius: '12px',
+                        color: 'var(--text-main)',
+                        transition: 'all 0.2s ease'
+                      }}
+                      className="hover-glow"
+                    >
+                      {term}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* AI Search Telemetry details */}
+              {searchTelemetry && (
+                <div style={{
+                  margin: '0 1.5rem 1rem 1.5rem',
+                  padding: '0.6rem 1rem',
+                  backgroundColor: 'rgba(139, 92, 246, 0.04)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '0.8rem',
+                  color: 'var(--text-muted)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '0.5rem'
+                }}>
+                  <span>
+                    ⚡ Search processed in <strong style={{ color: 'var(--primary-light)' }}>{searchTelemetry.latencyMs}ms</strong> via <span style={{ textTransform: 'capitalize', color: 'var(--text-main)', fontWeight: 600 }}>{searchTelemetry.layerUsed}</span>
+                  </span>
+                  {Object.keys(searchTelemetry.parsedQuery).length > 0 && (
+                    <span style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                      {Object.entries(searchTelemetry.parsedQuery).map(([key, val]) => (
+                        <span key={key} style={{ backgroundColor: 'var(--bg-main)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.72rem' }}>
+                          <strong>{key}</strong>: {String(val)}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                </div>
+              )}
+
               {/* Shimmer loading grids vs Products Catalog grid */}
               {loading ? (
                 <div className="shimmer-container">
@@ -992,8 +1208,8 @@ function App() {
                         <img className="product-img" src={p.imageUrl} alt={p.name} loading="lazy" />
                       </div>
                       <div className="product-info">
-                        <h4 className="product-name">{p.name}</h4>
-                        <p className="product-desc">{p.description}</p>
+                        <h4 className="product-name">{highlightKeywords(p.name, searchTerm)}</h4>
+                        <p className="product-desc">{highlightKeywords(p.description, searchTerm)}</p>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                           <span className={`product-stock ${p.stock < 50 ? 'low-stock' : ''}`}>
                             {p.stock === 0 ? 'Out of Stock' : `${p.stock} in stock`}

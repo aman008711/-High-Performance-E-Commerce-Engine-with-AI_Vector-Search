@@ -438,3 +438,81 @@ export const searchProductsVector = async (
   }
 };
 
+// GET /api/products/:id/recommendations
+export const getProductRecommendations = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const limit = parseInt(req.query.limit as string, 10) || 3;
+    const threshold = parseFloat(req.query.threshold as string) || 0.3;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new BadRequestError('Invalid product ID format');
+    }
+
+    const startTime = performance.now();
+    const cacheKey = `product:recommendations:id_${id}:limit_${limit}:threshold_${threshold}`;
+
+    // Check Redis cache first
+    const cachedResult = await getCache(cacheKey);
+    if (cachedResult) {
+      const endTime = performance.now();
+      const latency = parseFloat((endTime - startTime).toFixed(2));
+      res.setHeader('X-Cache', 'HIT');
+      res.setHeader('X-Response-Time', `${latency}ms`);
+      res.status(200).json({
+        status: 'success',
+        data: JSON.parse(cachedResult),
+      });
+      return;
+    }
+
+    const targetProduct = await Product.findById(id);
+    if (!targetProduct) {
+      throw new NotFoundError('Product not found');
+    }
+
+    const queryVector = targetProduct.vectorEmbedding && targetProduct.vectorEmbedding.length > 0
+      ? targetProduct.vectorEmbedding
+      : getQueryEmbedding(targetProduct.description || targetProduct.name, 384);
+
+    // Retrieve candidate products excluding current product
+    const candidates = await Product.find(
+      { _id: { $ne: id }, vectorEmbedding: { $exists: true, $ne: null } },
+      { name: 1, description: 1, price: 1, stock: 1, category: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
+    );
+
+    const scoredCandidates = candidates
+      .map((product) => {
+        const productEmbedding = product.vectorEmbedding || [];
+        const score = queryVector.reduce((sum, val, idx) => sum + val * (productEmbedding[idx] || 0), 0);
+        return {
+          ...product.toObject(),
+          score: parseFloat(score.toFixed(4)),
+        };
+      })
+      .filter((candidate) => candidate.score >= threshold);
+
+    scoredCandidates.sort((a, b) => b.score - a.score);
+    const recommended = scoredCandidates.slice(0, limit);
+
+    // Save cache (1 hour)
+    await setCache(cacheKey, JSON.stringify(recommended), 3600);
+
+    const endTime = performance.now();
+    const latency = parseFloat((endTime - startTime).toFixed(2));
+
+    res.setHeader('X-Cache', isRedisConnected() ? 'MISS' : 'BYPASS');
+    res.setHeader('X-Response-Time', `${latency}ms`);
+    res.status(200).json({
+      status: 'success',
+      data: recommended,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

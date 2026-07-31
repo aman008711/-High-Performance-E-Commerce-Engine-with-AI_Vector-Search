@@ -5,7 +5,8 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
-  searchProductsVector
+  searchProductsVector,
+  getProductRecommendations
 } from '../controllers/productController';
 import { apiRateLimiter, mutationRateLimiter } from '../middleware/rateLimiter';
 import { adminAuth } from '../middleware/auth';
@@ -23,6 +24,9 @@ router.get('/', getProducts);
 
 // Retrieve details for a single product
 router.get('/:id', getProduct);
+
+// Retrieve recommendations for a single product
+router.get('/:id/recommendations', getProductRecommendations);
 
 // Admin product mutation routes (requires adminAuth token verification, mutation limits, and purges cache)
 router.post('/', adminAuth, mutationRateLimiter, createProduct);

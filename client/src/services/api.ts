@@ -45,7 +45,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<ApiR
     }
 
     const payload = await response.json();
-    
+
     // Return structured API response containing telemetry metrics
     return {
       data: payload.data !== undefined ? payload.data : payload,
@@ -175,5 +175,9 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ items, discountCode }),
     });
+  },
+
+  getProductRecommendations: (id: string, limit = 3) => {
+    return request<ApiProduct[]>(`/products/${id}/recommendations?limit=${limit}`);
   },
 };

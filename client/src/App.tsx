@@ -1,4 +1,5 @@
 import { useState, useEffect, ChangeEvent } from 'react';
+import { io } from 'socket.io-client';
 import { api, ApiProduct } from './services/api';
 import { 
   Activity, 
@@ -119,6 +120,42 @@ function App() {
     const timer = setTimeout(fetchRecommendations, 300);
     return () => clearTimeout(timer);
   }, [cart]);
+
+  // Real-time WebSocket stock updates
+  useEffect(() => {
+    const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const socket = io(isDev ? 'http://localhost:5000' : window.location.origin, {
+      transports: ['websocket', 'polling']
+    });
+
+    socket.on('connect', () => {
+      console.log('📡 [Socket] Connected to server');
+    });
+
+    socket.on('inventoryUpdate', (updates: Array<{ productId: string; newStock: number }>) => {
+      console.log('📡 [Socket] Received stock updates:', updates);
+      setProducts(prevProducts => {
+        return prevProducts.map(product => {
+          const match = updates.find(u => u.productId === product._id);
+          if (match) {
+            return {
+              ...product,
+              stock: match.newStock
+            };
+          }
+          return product;
+        });
+      });
+    });
+
+    socket.on('disconnect', () => {
+      console.log('📡 [Socket] Disconnected from server');
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
 
   // Calculate totals client-side as fallback before backend calculation is fetched
   useEffect(() => {

@@ -6,6 +6,12 @@ export interface IProduct extends Document {
   price: number;
   stock: number;
   category: string;
+  subcategory: string;
+  brand: string;
+  color: string;
+  gender: string;
+  material: string;
+  rating: number;
   tags: string[];
   imageUrl: string;
   vectorEmbedding?: number[]; // Vector coordinates array for AI semantic search
@@ -42,6 +48,41 @@ const productSchema = new Schema<IProduct>(
       required: [true, 'Product category is required'],
       trim: true,
       index: true,
+    },
+    subcategory: {
+      type: String,
+      default: '',
+      trim: true,
+      index: true,
+    },
+    brand: {
+      type: String,
+      default: '',
+      trim: true,
+      index: true,
+    },
+    color: {
+      type: String,
+      default: '',
+      trim: true,
+      index: true,
+    },
+    gender: {
+      type: String,
+      default: 'Unisex',
+      trim: true,
+      index: true,
+    },
+    material: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    rating: {
+      type: Number,
+      default: 4.0,
+      min: 1.0,
+      max: 5.0,
     },
     tags: {
       type: [String],

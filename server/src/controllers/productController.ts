@@ -406,7 +406,9 @@ export const searchProductsVector = async (
           let matches = 0;
           const textToMatch = `${product.name} ${product.description} ${product.tags.join(' ')}`.toLowerCase();
           for (const word of queryWords) {
-            if (textToMatch.includes(word)) {
+            // Basic stem check for plurals (e.g. "shirts" -> "shirt", "headphones" -> "headphone")
+            const wordStem = word.endsWith('s') && word.length > 3 ? word.slice(0, -1) : word;
+            if (textToMatch.includes(word) || textToMatch.includes(wordStem)) {
               matches++;
             }
           }

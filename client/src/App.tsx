@@ -92,6 +92,10 @@ function App() {
     total: 0
   });
 
+  // Particles states for cart animations
+  const [particles, setParticles] = useState<Array<{ id: number; x: number; y: number; tx: number; ty: number }>>([]);
+  const [cartBadgePop, setCartBadgePop] = useState<boolean>(false);
+
   // Theme states
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
@@ -182,11 +186,60 @@ function App() {
     }));
   }, [cart]);
 
-  const addToCart = (product: ApiProduct) => {
+  // Sync totals with backend in the background when cart item quantities update
+  useEffect(() => {
+    if (cart.length === 0) return;
+    if (!couponInput) return;
+
+    const syncTotals = async () => {
+      try {
+        const itemsPayload = cart.map(item => ({
+          productId: item.product._id,
+          quantity: item.quantity
+        }));
+        const response = await api.calculateCart(itemsPayload, couponInput);
+        setTotals({
+          subtotal: response.data.subtotal,
+          discountPercent: response.data.discountPercent,
+          discountApplied: response.data.discountApplied,
+          total: response.data.total
+        });
+      } catch (error) {
+        console.error('Failed to sync calculations in background:', error);
+      }
+    };
+
+    const timer = setTimeout(syncTotals, 300);
+    return () => clearTimeout(timer);
+  }, [cart, couponInput]);
+
+  const addToCart = (product: ApiProduct, e?: React.MouseEvent) => {
+    if (e) {
+      const clickX = e.clientX;
+      const clickY = e.clientY;
+      const cartBtn = document.querySelector('.cart-trigger-btn');
+      let tx = window.innerWidth - 100 - clickX;
+      let ty = 20 - clickY;
+      if (cartBtn) {
+        const rect = cartBtn.getBoundingClientRect();
+        tx = rect.left + rect.width / 2 - clickX;
+        ty = rect.top + rect.height / 2 - clickY;
+      }
+
+      const particleId = Date.now() + Math.random();
+      setParticles(prev => [...prev, { id: particleId, x: clickX, y: clickY, tx, ty }]);
+
+      setTimeout(() => {
+        setParticles(prev => prev.filter(p => p.id !== particleId));
+        setCartBadgePop(true);
+        setTimeout(() => setCartBadgePop(false), 350);
+      }, 700);
+    }
+
     setCart(prev => {
       const existing = prev.find(item => item.product._id === product._id);
       if (existing) {
-        if (existing.quantity >= product.stock) return prev; // Limit to available stock
+        if (existing.quantity >= product.stock) return prev;
         return prev.map(item => 
           item.product._id === product._id 
             ? { ...item, quantity: item.quantity + 1 } 
@@ -715,7 +768,7 @@ function App() {
                 position: 'relative',
                 transition: 'all 0.2s',
               }}
-              className="cart-trigger-btn"
+              className={`cart-trigger-btn ${cartBadgePop ? 'cart-badge-pop' : ''}`}
             >
               <ShoppingCart size={15} color="var(--primary-light)" />
               <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Cart</span>
@@ -949,7 +1002,7 @@ function App() {
                         <div className="product-footer" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.6rem' }}>
                           <span className="product-price">${p.price.toFixed(2)}</span>
                           <button
-                            onClick={() => addToCart(p)}
+                            onClick={(e) => addToCart(p, e)}
                             disabled={p.stock === 0}
                             className="btn btn-primary"
                             style={{
@@ -1699,6 +1752,20 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* Flying particles overlay list */}
+      {particles.map(p => (
+        <div
+          key={p.id}
+          className="flying-particle"
+          style={{
+            left: `${p.x - 10}px`,
+            top: `${p.y - 10}px`,
+            '--target-x': `${p.tx}px`,
+            '--target-y': `${p.ty}px`
+          } as React.CSSProperties}
+        />
+      ))}
     </div>
   );
 }

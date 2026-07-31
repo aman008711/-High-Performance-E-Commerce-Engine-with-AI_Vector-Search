@@ -983,5 +983,42 @@ body.light-theme input, body.light-theme select {
   color: var(--text-main) !important;
 }
 
+/* Flying product particle animations */
+.flying-particle {
+  position: fixed;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+  box-shadow: 0 0 8px var(--primary-light), 0 0 16px var(--primary);
+  z-index: 9999;
+  pointer-events: none;
+  animation: fly-to-cart 0.7s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+@keyframes fly-to-cart {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(var(--target-x), var(--target-y)) scale(0.25);
+    opacity: 0.15;
+  }
+}
+
+@keyframes pop-badge {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.4); }
+  100% { transform: scale(1); }
+}
+
+.cart-badge-pop {
+  animation: pop-badge 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
 
 

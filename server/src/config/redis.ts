@@ -72,20 +72,9 @@ redis.on('reconnecting', (delay: number) => {
   console.log(`🔄 [Redis] Reconnecting in ${delay}ms...`);
 });
 
-// Memory cache standby fallback when Redis server connection is closed/unreachable
-const memoryCache = new Map<string, { value: string; expiresAt: number }>();
-
 // Safe wrapped actions preventing errors from halting primary MongoDB routes
 export const getCache = async (key: string): Promise<string | null> => {
-  if (!isAvailable) {
-    const entry = memoryCache.get(key);
-    if (!entry) return null;
-    if (Date.now() > entry.expiresAt) {
-      memoryCache.delete(key);
-      return null;
-    }
-    return entry.value;
-  }
+  if (!isAvailable) return null;
   try {
     return await redis.get(key);
   } catch (error) {
@@ -95,13 +84,7 @@ export const getCache = async (key: string): Promise<string | null> => {
 };
 
 export const setCache = async (key: string, value: string, ttlSeconds: number): Promise<void> => {
-  if (!isAvailable) {
-    memoryCache.set(key, {
-      value,
-      expiresAt: Date.now() + (ttlSeconds * 1000)
-    });
-    return;
-  }
+  if (!isAvailable) return;
   try {
     await redis.setex(key, ttlSeconds, value);
   } catch (error) {
@@ -110,7 +93,6 @@ export const setCache = async (key: string, value: string, ttlSeconds: number): 
 };
 
 export const delCache = async (key: string): Promise<void> => {
-  memoryCache.delete(key);
   if (!isAvailable) return;
   try {
     await redis.del(key);
@@ -121,14 +103,6 @@ export const delCache = async (key: string): Promise<void> => {
 
 // Clear matching cached lists or objects using non-blocking SCAN cursors (Cluster-safe)
 export const delCachePattern = async (pattern: string): Promise<void> => {
-  // Clear memory cache matching pattern
-  const regexPattern = new RegExp("^" + pattern.replace(/\*/g, ".*") + "$");
-  for (const key of memoryCache.keys()) {
-    if (regexPattern.test(key)) {
-      memoryCache.delete(key);
-    }
-  }
-
   if (!isAvailable) return;
   try {
     const isCluster = redis instanceof Cluster;

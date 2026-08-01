@@ -3,8 +3,6 @@ import mongoose from 'mongoose';
 import { Product } from '../models/Product';
 import { BadRequestError, NotFoundError } from '../utils/errors';
 import { getCache, setCache, delCache, delCachePattern, isRedisConnected } from '../config/redis';
-import { embedText } from '../config/embedder';
-
 
 // Retrieve product listings with Redis Cache-Aside optimizations
 export const getProducts = async (
@@ -85,7 +83,7 @@ export const getProducts = async (
     const latency = parseFloat((endTime - startTime).toFixed(2));
 
     // Set HTTP headers indicating Cache Miss
-    res.setHeader('X-Cache', 'MISS');
+    res.setHeader('X-Cache', isRedisConnected() ? 'MISS' : 'BYPASS');
     res.setHeader('X-Response-Time', `${latency}ms`);
 
     res.status(200).json({
@@ -140,7 +138,7 @@ export const getProduct = async (
     const endTime = performance.now();
     const latency = parseFloat((endTime - startTime).toFixed(2));
 
-    res.setHeader('X-Cache', 'MISS');
+    res.setHeader('X-Cache', isRedisConnected() ? 'MISS' : 'BYPASS');
     res.setHeader('X-Response-Time', `${latency}ms`);
     res.status(200).json({
       status: 'success',
@@ -168,8 +166,6 @@ export const createProduct = async (
 
     // Evict cache list results since the catalog changed
     await delCachePattern('products:all*');
-    await delCache('products:categories:unique');
-    await delCache('products:categorywise');
 
     // Trigger non-blocking background cache pre-warming for default main list page
     warmCache().catch(err => console.error('[Redis] Background cache warming failed:', err));
@@ -208,8 +204,6 @@ export const updateProduct = async (
     // Invalidate details cache key and all search listing keys
     await delCache(`product:id:${id}`);
     await delCachePattern('products:all*');
-    await delCache('products:categories:unique');
-    await delCache('products:categorywise');
 
     // Trigger non-blocking background cache pre-warming for default main list page
     warmCache().catch(err => console.error('[Redis] Background cache warming failed:', err));
@@ -245,8 +239,6 @@ export const deleteProduct = async (
     // Invalidate details cache key and all search listing keys
     await delCache(`product:id:${id}`);
     await delCachePattern('products:all*');
-    await delCache('products:categories:unique');
-    await delCache('products:categorywise');
 
     // Trigger non-blocking background cache pre-warming for default main list page
     warmCache().catch(err => console.error('[Redis] Background cache warming failed:', err));
@@ -290,32 +282,31 @@ export const warmCache = async (): Promise<void> => {
 };
 
 // Deterministic normal unit vector embedding generator for semantic search matching locally
-export const getQueryEmbedding = async (search: string, dimensions = 384): Promise<number[]> => {
-  try {
-    return await embedText(search);
-  } catch (err) {
-    console.error('[Embedder] Real embedding failed, falling back to pseudo-random hash:', err);
-    let hash = 0;
-    for (let i = 0; i < search.length; i++) {
-      hash = (hash << 5) - hash + search.charCodeAt(i);
-      hash |= 0;
-    }
-    const seededRandom = () => {
-      const x = Math.sin(hash++) * 10000;
-      return x - Math.floor(x);
-    };
-    const vector: number[] = [];
-    let sumOfSquares = 0;
-    for (let i = 0; i < dimensions; i++) {
-      const u1 = seededRandom() || 0.0001;
-      const u2 = seededRandom();
-      const randStdNormal = Math.sqrt(-2.0 * Math.log(u1)) * Math.sin(2.0 * Math.PI * u2);
-      vector.push(randStdNormal);
-      sumOfSquares += randStdNormal * randStdNormal;
-    }
-    const magnitude = Math.sqrt(sumOfSquares);
-    return vector.map((val) => (magnitude > 0 ? val / magnitude : 0));
+export const getQueryEmbedding = (search: string, dimensions = 384): number[] => {
+  let hash = 0;
+  for (let i = 0; i < search.length; i++) {
+    hash = (hash << 5) - hash + search.charCodeAt(i);
+    hash |= 0; // Convert to 32bit integer
   }
+
+  const seededRandom = () => {
+    const x = Math.sin(hash++) * 10000;
+    return x - Math.floor(x);
+  };
+
+  const vector: number[] = [];
+  let sumOfSquares = 0;
+
+  for (let i = 0; i < dimensions; i++) {
+    const u1 = seededRandom() || 0.0001;
+    const u2 = seededRandom();
+    const randStdNormal = Math.sqrt(-2.0 * Math.log(u1)) * Math.sin(2.0 * Math.PI * u2);
+    vector.push(randStdNormal);
+    sumOfSquares += randStdNormal * randStdNormal;
+  }
+
+  const magnitude = Math.sqrt(sumOfSquares);
+  return vector.map((val) => (magnitude > 0 ? val / magnitude : 0));
 };
 
 // AI Vector Semantic Search Controller
@@ -412,14 +403,14 @@ export const parseQueryUnderstanding = (searchQuery: string): ParsedQuery => {
     { keywords: ["phone", "phones", "mobile", "mobiles", "smartphone", "smartphones"], category: "Mobiles" },
     { keywords: ["laptop", "laptops", "notebook", "notebooks", "ultrabook"], category: "Laptops" },
     { keywords: ["watch", "watches", "smartwatch"], category: "Watches" },
-    { keywords: ["beauty", "cream", "shampoo", "perfume", "mist", "makeup", "cosmetics"], category: "Beauty & Personal Care" },
+    { keywords: ["beauty", "cream", "shampoo", "perfume", "mist", "makeup", "cosmetics"], category: "Beauty" },
     { keywords: ["blender", "kettle", "pan", "cookware", "pot", "toaster", "kitchen"], category: "Home & Kitchen" },
-    { keywords: ["coffee", "salt", "pepper", "tea", "grocery", "food", "snacks"], category: "Food & Nutrition" },
-    { keywords: ["yoga", "dumbbell", "tent", "racket", "sports", "camping"], category: "Sports & Fitness" },
-    { keywords: ["book", "books", "novel", "novels", "biography", "memoir", "cookbook", "paper weight", "stationery", "pen"], category: "Pens & Stationery" },
-    { keywords: ["toy", "toys", "lego", "drone", "blocks", "puzzle", "board game"], category: "Toys & Games" },
+    { keywords: ["coffee", "salt", "pepper", "tea", "grocery", "food", "snacks"], category: "Grocery" },
+    { keywords: ["yoga", "dumbbell", "tent", "racket", "sports", "camping"], category: "Sports" },
+    { keywords: ["book", "books", "novel", "novels", "biography", "memoir", "cookbook"], category: "Books" },
+    { keywords: ["toy", "toys", "lego", "drone", "blocks", "puzzle", "board game"], category: "Toys" },
     { keywords: ["furniture", "chair", "table", "desk", "bookshelf"], category: "Furniture" },
-    { keywords: ["accessories", "sunglasses", "belt", "backpack", "beanie"], category: "Bags, Wallets & Belts" }
+    { keywords: ["accessories", "sunglasses", "belt", "backpack", "beanie"], category: "Accessories" }
   ];
 
   for (const map of mappings) {
@@ -455,7 +446,6 @@ export const parseQueryUnderstanding = (searchQuery: string): ParsedQuery => {
   return parsed;
 };
 
-// AI Vector & Hybrid Search Controller
 // AI Vector & Hybrid Search Controller
 export const searchProductsVector = async (
   req: Request,
@@ -500,14 +490,15 @@ export const searchProductsVector = async (
       parsedQuery.category = categoryFilter;
     }
 
-    // Generate real query embedding from local Sentence-Transformer ONNX model
-    const queryVector = await getQueryEmbedding(search, 384);
+    const queryVector = getQueryEmbedding(search, 384);
     const queryWords = search.toLowerCase().split(/\s+/).filter(w => w.length > 2);
 
     let candidates: any[] = [];
     let layerUsed = "Direct Metadata Match";
 
-    // 2. Metadata Filtering Layers (Layered Fallback with .lean() and limit check)
+    // 2. Metadata Filtering Layers (Layered Fallback)
+    
+    // Layer 1: Strict match using parsed category, subcategory, brand, gender, and price range
     const filterQuery: any = { vectorEmbedding: { $exists: true, $ne: null } };
     if (parsedQuery.category) {
       filterQuery.category = parsedQuery.category;
@@ -530,11 +521,10 @@ export const searchProductsVector = async (
       if (parsedQuery.minPrice) filterQuery.price.$gte = parsedQuery.minPrice;
     }
 
-    // Layer 1: Strict match using parsed query tags with lean and 600 limits to shield the Event Loop
     candidates = await Product.find(
       filterQuery,
       { name: 1, description: 1, price: 1, stock: 1, category: 1, subcategory: 1, brand: 1, color: 1, gender: 1, material: 1, rating: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
-    ).limit(600).lean();
+    );
 
     // Layer 2: Fall back to category-only filter if strict match is empty
     if (candidates.length === 0 && parsedQuery.category) {
@@ -542,66 +532,24 @@ export const searchProductsVector = async (
       candidates = await Product.find(
         { category: parsedQuery.category, vectorEmbedding: { $exists: true, $ne: null } },
         { name: 1, description: 1, price: 1, stock: 1, category: 1, subcategory: 1, brand: 1, color: 1, gender: 1, material: 1, rating: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
-      ).limit(600).lean();
+      );
     }
 
-    // Layer 3: Fall back to all products (keyword search regex constraint) if category-only is empty or no category detected
+    // Layer 3: Fall back to all products (broad semantic search) if category-only is empty or no category detected
     if (candidates.length === 0) {
       layerUsed = "Global Fallback Match";
-      const queryWordsRegex = queryWords.map(w => new RegExp(`\\b${w.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}`, 'i'));
-      
-      const searchConditions: any[] = [];
-      if (queryWordsRegex.length > 0) {
-        searchConditions.push({ name: { $in: queryWordsRegex } });
-        searchConditions.push({ tags: { $in: queryWords.map(w => w.toLowerCase()) } });
-      }
-      
-      const querySelector: any = { vectorEmbedding: { $exists: true, $ne: null } };
-      if (searchConditions.length > 0) {
-        querySelector.$or = searchConditions;
-      }
-      
       candidates = await Product.find(
-        querySelector,
+        { vectorEmbedding: { $exists: true, $ne: null } },
         { name: 1, description: 1, price: 1, stock: 1, category: 1, subcategory: 1, brand: 1, color: 1, gender: 1, material: 1, rating: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
-      ).limit(600).lean();
-      
-      // Filler logic: if still too few candidates AND no active search query is provided, fill with top-rated items to allow semantic fallback matching
-      if (candidates.length < 50 && !search) {
-        const fillers = await Product.find(
-          { vectorEmbedding: { $exists: true, $ne: null } },
-          { name: 1, description: 1, price: 1, stock: 1, category: 1, subcategory: 1, brand: 1, color: 1, gender: 1, material: 1, rating: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
-        ).sort({ rating: -1 }).limit(150).lean();
-        
-        // Merge without duplicates
-        const existingIds = new Set(candidates.map(c => c._id.toString()));
-        for (const item of fillers) {
-          if (!existingIds.has(item._id.toString())) {
-            candidates.push(item);
-          }
-        }
-      }
+      );
     }
 
     // 3. Hybrid Ranking Score Calculation
     const scoredCandidates = candidates.map((product) => {
       const productEmbedding = product.vectorEmbedding || [];
-      
-      // A. Semantic similarity: Dot product (both vectors are normalized L2)
       const vectorScore = queryVector.reduce((sum, val, idx) => sum + val * (productEmbedding[idx] || 0), 0);
 
-      // B. Exact keyword match:
-      let matches = 0;
-      const textToMatch = `${product.name} ${product.description} ${product.subcategory || ''} ${product.brand || ''} ${product.color || ''} ${product.material || ''} ${product.tags.join(' ')}`.toLowerCase();
-      for (const word of queryWords) {
-        const wordStem = word.endsWith('s') && word.length > 3 ? word.slice(0, -1) : word;
-        if (textToMatch.includes(word) || textToMatch.includes(wordStem)) {
-          matches++;
-        }
-      }
-      const keywordScore = queryWords.length > 0 ? (matches / queryWords.length) : 0.0;
-
-      // C. Exact title matches boost
+      // Exact title matches boost
       const prodNameLower = product.name.toLowerCase();
       const searchLower = search.toLowerCase();
       let titleScore = 0;
@@ -613,68 +561,43 @@ export const searchProductsVector = async (
         titleScore = 0.5;
       }
 
-      // D. Category / Subcategory exact matches boost
+      // Category / Subcategory exact matches boost
       let categoryMatchScore = 0;
-      if (parsedQuery.category && product.category.toLowerCase() === parsedQuery.category.toLowerCase()) {
+      if (parsedQuery.category && product.category === parsedQuery.category) {
         categoryMatchScore += 0.6;
       }
-      if (parsedQuery.subcategory && product.subcategory.toLowerCase() === parsedQuery.subcategory.toLowerCase()) {
+      if (parsedQuery.subcategory && product.subcategory === parsedQuery.subcategory) {
         categoryMatchScore += 0.4;
       }
 
-      // E. Brand Match boost
-      let brandMatchScore = 0;
-      if (parsedQuery.brand && product.brand.toLowerCase() === parsedQuery.brand.toLowerCase()) {
-        brandMatchScore = 1.0;
+      // Keyword matches boost
+      let matches = 0;
+      const textToMatch = `${product.name} ${product.description} ${product.subcategory || ''} ${product.brand || ''} ${product.color || ''} ${product.material || ''} ${product.tags.join(' ')}`.toLowerCase();
+      for (const word of queryWords) {
+        const wordStem = word.endsWith('s') && word.length > 3 ? word.slice(0, -1) : word;
+        if (textToMatch.includes(word) || textToMatch.includes(wordStem)) {
+          matches++;
+        }
       }
+      const keywordScore = queryWords.length > 0 ? (matches / queryWords.length) : 0.0;
 
-      // F. Product availability: boost if in stock, penalize if out of stock
-      const availabilityScore = product.stock > 0 ? 1.0 : 0.0;
-
-      // G. Rating component (0.0 to 1.0)
+      // Rating/Popularity component
       const ratingScore = (product.rating || 4.0) / 5.0;
 
-      // H. Product popularity proxy (deterministic score based on id/stock)
-      const popularityScore = ((product.stock * 3) % 100) / 100;
-
-      // Weighted score combination:
-      // Semantic (30%), Title Match (20%), Keyword Match (15%), Category Match (10%), Brand Match (10%), Availability (10%), Rating (2.5%), Popularity (2.5%)
-      const finalScore = 
-        (vectorScore * 0.30) + 
-        (titleScore * 0.20) + 
-        (keywordScore * 0.15) + 
-        (categoryMatchScore * 0.10) + 
-        (brandMatchScore * 0.10) + 
-        (availabilityScore * 0.10) + 
-        (ratingScore * 0.025) + 
-        (popularityScore * 0.025);
-
-      // Score explanation object for search debugging
-      const explanation = {
-        semanticSimilarity: parseFloat(vectorScore.toFixed(4)),
-        titleMatchBoost: parseFloat(titleScore.toFixed(2)),
-        keywordMatchRatio: parseFloat(keywordScore.toFixed(2)),
-        categoryMatchBoost: parseFloat(categoryMatchScore.toFixed(2)),
-        brandMatchBoost: parseFloat(brandMatchScore.toFixed(2)),
-        availabilityScore: parseFloat(availabilityScore.toFixed(2)),
-        ratingScore: parseFloat(ratingScore.toFixed(4)),
-        popularityScore: parseFloat(popularityScore.toFixed(4))
-      };
-
-      // Exclude vectorEmbedding from the final product payload returned to UI to save network bandwidth
-      const { vectorEmbedding, ...productPayload } = product;
+      // Combined Hybrid Search Ranking formula
+      // Weights: 40% Title, 25% Category Match, 15% Keywords, 15% Vector Similarity, 5% Rating
+      const finalScore = (titleScore * 0.40) + (categoryMatchScore * 0.25) + (keywordScore * 0.15) + (vectorScore * 0.15) + (ratingScore * 0.05);
 
       return {
-        ...productPayload,
+        ...product.toObject(),
         score: parseFloat(Math.min(0.99, finalScore).toFixed(4)),
-        explanation
       };
     });
 
     // Sort by hybrid score descending
     scoredCandidates.sort((a, b) => b.score - a.score);
 
-    // Limit returned products list (Pagination)
+    // Limit returned products list
     const total = scoredCandidates.length;
     const products = scoredCandidates.slice((page - 1) * limit, page * limit);
     const pages = Math.ceil(total / limit);
@@ -685,7 +608,7 @@ export const searchProductsVector = async (
       pages,
       telemetry: {
         parsedQuery,
-        latencyMs: 0,
+        latencyMs: 0, // Filled after performance metrics calculations
         layerUsed,
       }
     };
@@ -697,7 +620,7 @@ export const searchProductsVector = async (
     // Cache the response payload (1 hour)
     await setCache(cacheKey, JSON.stringify(responsePayload), 3600);
 
-    res.setHeader('X-Cache', 'MISS');
+    res.setHeader('X-Cache', isRedisConnected() ? 'MISS' : 'BYPASS');
     res.setHeader('X-Response-Time', `${latency}ms`);
     res.status(200).json({
       status: 'success',
@@ -747,7 +670,7 @@ export const getProductRecommendations = async (
 
     const queryVector = targetProduct.vectorEmbedding && targetProduct.vectorEmbedding.length > 0
       ? targetProduct.vectorEmbedding
-      : await getQueryEmbedding(targetProduct.description || targetProduct.name, 384);
+      : getQueryEmbedding(targetProduct.description || targetProduct.name, 384);
 
     // Retrieve candidate products excluding current product
     const candidates = await Product.find(
@@ -794,114 +717,11 @@ export const getProductRecommendations = async (
     const endTime = performance.now();
     const latency = parseFloat((endTime - startTime).toFixed(2));
 
-    res.setHeader('X-Cache', 'MISS');
+    res.setHeader('X-Cache', isRedisConnected() ? 'MISS' : 'BYPASS');
     res.setHeader('X-Response-Time', `${latency}ms`);
     res.status(200).json({
       status: 'success',
       data: recommended,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Retrieve all unique product categories (with Redis Cache-Aside TTL: 1 hour)
-export const getUniqueCategories = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  const startTime = performance.now();
-  try {
-    const cacheKey = 'products:categories:unique';
-    const cachedCategories = await getCache(cacheKey);
-
-    if (cachedCategories) {
-      const endTime = performance.now();
-      const latency = parseFloat((endTime - startTime).toFixed(2));
-      res.setHeader('X-Cache', 'HIT');
-      res.setHeader('X-Response-Time', `${latency}ms`);
-      res.status(200).json({
-        status: 'success',
-        data: JSON.parse(cachedCategories),
-      });
-      return;
-    }
-
-    const categories = await Product.distinct('category');
-    // Sort alphabetically
-    categories.sort((a: string, b: string) => a.localeCompare(b));
-
-    await setCache(cacheKey, JSON.stringify(categories), 3600);
-
-    const endTime = performance.now();
-    const latency = parseFloat((endTime - startTime).toFixed(2));
-    res.setHeader('X-Cache', 'MISS');
-    res.setHeader('X-Response-Time', `${latency}ms`);
-    res.status(200).json({
-      status: 'success',
-      data: categories,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Retrieve products grouped category-wise (with Redis Cache-Aside TTL: 1 hour)
-export const getCategoryWiseProducts = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  const startTime = performance.now();
-  try {
-    const cacheKey = 'products:categorywise';
-    const cachedData = await getCache(cacheKey);
-
-    if (cachedData) {
-      const endTime = performance.now();
-      const latency = parseFloat((endTime - startTime).toFixed(2));
-      res.setHeader('X-Cache', 'HIT');
-      res.setHeader('X-Response-Time', `${latency}ms`);
-      res.status(200).json({
-        status: 'success',
-        data: JSON.parse(cachedData),
-      });
-      return;
-    }
-
-    // 1. Get top 10 categories by count
-    const topCategories = await Product.aggregate([
-      { $group: { _id: '$category', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 10 }
-    ]);
-
-    const categoriesList = topCategories.map(c => c._id);
-
-    // 2. Fetch top 4 products for each category
-    const categoryWise: Array<{ category: string; products: any[] }> = [];
-    for (const cat of categoriesList) {
-      if (!cat) continue;
-      const products = await Product.find({ category: cat })
-        .sort({ createdAt: -1 })
-        .limit(4);
-      categoryWise.push({
-        category: cat,
-        products
-      });
-    }
-
-    // Cache the result for 1 hour
-    await setCache(cacheKey, JSON.stringify(categoryWise), 3600);
-
-    const endTime = performance.now();
-    const latency = parseFloat((endTime - startTime).toFixed(2));
-    res.setHeader('X-Cache', 'MISS');
-    res.setHeader('X-Response-Time', `${latency}ms`);
-    res.status(200).json({
-      status: 'success',
-      data: categoryWise,
     });
   } catch (error) {
     next(error);

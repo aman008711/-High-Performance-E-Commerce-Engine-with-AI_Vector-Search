@@ -133,6 +133,49 @@ const highlightKeywords = (text: string, searchStr: string): React.ReactNode => 
   );
 };
 
+const getLoremFlickrUrl = (name: string, category: string, width = 500, height = 400): string => {
+  const cat = (category || '').toLowerCase();
+  const title = (name || '').toLowerCase();
+  
+  let keyword = 'product';
+  if (cat.includes('shoe')) keyword = 'shoes';
+  else if (cat.includes('phone') || cat.includes('mobile')) keyword = 'smartphone,phone';
+  else if (cat.includes('laptop')) keyword = 'laptop,computer';
+  else if (cat.includes('watch')) keyword = 'watch';
+  else if (cat.includes('clothing') || cat.includes('apparel') || cat.includes('shirt') || cat.includes('sweater') || cat.includes('dress') || cat.includes('jeans') || cat.includes('hoodie')) {
+    if (title.includes('shirt') || title.includes('tee')) keyword = 'tshirt';
+    else if (title.includes('sweater') || title.includes('knit')) keyword = 'sweater';
+    else if (title.includes('dress')) keyword = 'dress';
+    else if (title.includes('jeans')) keyword = 'jeans';
+    else if (title.includes('hoodie')) keyword = 'hoodie';
+    else keyword = 'clothing';
+  }
+  else if (cat.includes('electronics')) {
+    if (title.includes('headphone') || title.includes('airpods') || title.includes('earbuds')) keyword = 'headphones';
+    else if (title.includes('keyboard')) keyword = 'keyboard';
+    else if (title.includes('speaker')) keyword = 'speaker';
+    else if (title.includes('monitor')) keyword = 'monitor';
+    else keyword = 'electronics';
+  }
+  else if (cat.includes('beauty') || cat.includes('care') || cat.includes('cream')) keyword = 'cosmetics';
+  else if (cat.includes('kitchen') || cat.includes('home')) {
+    if (title.includes('vacuum') || title.includes('dyson')) keyword = 'vacuum';
+    else keyword = 'home,kitchen';
+  }
+  else if (cat.includes('toy') || cat.includes('lego')) keyword = 'toys';
+  else if (cat.includes('grocery') || cat.includes('food') || cat.includes('coffee')) keyword = 'coffee,grocery';
+  else if (cat.includes('furniture') || cat.includes('chair')) keyword = 'furniture';
+  
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash << 5) - hash + name.charCodeAt(i);
+    hash |= 0;
+  }
+  const lock = Math.abs(hash) % 1000;
+  
+  return `https://loremflickr.com/${width}/${height}/${keyword}?lock=${lock}`;
+};
+
 function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'catalog' | 'admin' | 'logs'>('dashboard');
   const [apiStatus, setApiStatus] = useState<'Online' | 'Offline' | 'Checking'>('Checking');
@@ -169,6 +212,12 @@ function App() {
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [searchTelemetry, setSearchTelemetry] = useState<any>(null);
+
+  const [categoryWiseProducts, setCategoryWiseProducts] = useState<Array<{ category: string; count: number; products: ApiProduct[] }>>([]);
+  const [categoryWiseLoading, setCategoryWiseLoading] = useState<boolean>(false);
+  const [isCategoryWiseMode, setIsCategoryWiseMode] = useState<boolean>(false);
+  const [dynamicCategories, setDynamicCategories] = useState<string[]>(CATEGORIES);
+
 
   const [avgLatency, setAvgLatency] = useState<number>(12.4);
   const [cacheHitRate, setCacheHitRate] = useState<number>(94.8);
@@ -458,7 +507,7 @@ function App() {
   useEffect(() => {
     if (editingProduct) {
       setFormName(editingProduct.name || '');
-      setFormCategory(editingProduct.category || CATEGORIES[0]);
+      setFormCategory(editingProduct.category || dynamicCategories[0] || CATEGORIES[0]);
       setFormPrice(editingProduct.price ? editingProduct.price.toString() : '');
       setFormStock(editingProduct.stock !== undefined ? editingProduct.stock.toString() : '');
       setFormDescription(editingProduct.description || '');
@@ -483,7 +532,7 @@ function App() {
       stock: parsedStock,
       category: formCategory,
       tags: parsedTags,
-      imageUrl: formImageUrl || `https://picsum.photos/seed/${encodeURIComponent(formName.slice(0, 5))}/500/400`
+      imageUrl: formImageUrl || getLoremFlickrUrl(formName, formCategory)
     };
 
     try {
@@ -639,10 +688,50 @@ function App() {
     }
   };
 
+  const fetchCategoryWiseProducts = async () => {
+    setCategoryWiseLoading(true);
+    try {
+      const response = await api.getCategoryWiseProducts();
+      setCategoryWiseProducts(response.data);
+
+      const cats = response.data.map(item => item.category);
+      if (cats.length > 0) {
+        setDynamicCategories(cats);
+      }
+
+      const newLog = {
+        method: 'GET',
+        path: '/api/products/category-wise',
+        status: response.cacheStatus,
+        latency: `${response.latency}ms`,
+        speed: (response.latency < 50 ? 'fast' : 'slow') as 'fast' | 'slow'
+      };
+
+      setLogs(prev => [newLog, ...prev.slice(0, 19)]);
+      setAvgLatency(prev => parseFloat(((prev * 0.9) + (response.latency * 0.1)).toFixed(1)));
+      
+      if (response.cacheStatus === 'HIT') {
+        setCacheHitRate(prev => parseFloat(((prev * 0.95) + 5).toFixed(1)));
+      } else if (response.cacheStatus === 'MISS') {
+        setCacheHitRate(prev => parseFloat(((prev * 0.95)).toFixed(1)));
+      }
+    } catch (err) {
+      console.error('Failed to fetch category wise products:', err);
+    } finally {
+      setCategoryWiseLoading(false);
+    }
+  };
+
+  // Run category-wise fetch on mount and standard fetch when filters update
+  useEffect(() => {
+    fetchCategoryWiseProducts();
+  }, []);
+
   // Re-run search whenever page, category, search mode, or debounced keyword updates
   useEffect(() => {
     fetchProducts();
   }, [currentPage, selectedCategory, debouncedSearchTerm, isVectorSearch]);
+
 
   const handleSearch = (e: ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
@@ -1045,7 +1134,7 @@ function App() {
                     }}
                   >
                     <option value="">All Categories</option>
-                    {CATEGORIES.map((cat, idx) => (
+                    {dynamicCategories.map((cat, idx) => (
                       <option key={idx} value={cat}>{cat}</option>
                     ))}
                   </select>
@@ -1064,6 +1153,47 @@ function App() {
                   </span>
                 </div>
               </div>
+
+              {/* Layout Mode Selector (Only show if search is empty) */}
+              {!searchTerm && (
+                <div style={{ display: 'flex', gap: '0.5rem', margin: '0.5rem 1.5rem 1.25rem 1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+                  <button
+                    onClick={() => setIsCategoryWiseMode(false)}
+                    style={{
+                      padding: '0.35rem 0.9rem',
+                      borderRadius: '20px',
+                      border: '1px solid var(--border-color)',
+                      backgroundColor: !isCategoryWiseMode ? 'var(--primary)' : 'var(--bg-surface)',
+                      color: !isCategoryWiseMode ? '#fff' : 'var(--text-main)',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      boxShadow: !isCategoryWiseMode ? '0 0 10px rgba(99, 102, 241, 0.3)' : 'none',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    All Products (Grid)
+                  </button>
+                  <button
+                    onClick={() => { setIsCategoryWiseMode(true); fetchCategoryWiseProducts(); }}
+                    style={{
+                      padding: '0.35rem 0.9rem',
+                      borderRadius: '20px',
+                      border: '1px solid var(--border-color)',
+                      backgroundColor: isCategoryWiseMode ? 'var(--primary)' : 'var(--bg-surface)',
+                      color: isCategoryWiseMode ? '#fff' : 'var(--text-main)',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      boxShadow: isCategoryWiseMode ? '0 0 10px rgba(99, 102, 241, 0.3)' : 'none',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    Category-Wise (Carousel)
+                  </button>
+                </div>
+              )}
+
 
               {/* Did you mean Suggestion */}
               {searchTerm && getTypoSuggestion(searchTerm) && (
@@ -1177,123 +1307,269 @@ function App() {
                 </div>
               )}
 
-              {/* Shimmer loading grids vs Products Catalog grid */}
-              {loading ? (
-                <div className="shimmer-container">
-                  {Array.from({ length: 8 }).map((_, idx) => (
-                    <div className="shimmer-card" key={idx}>
-                      <div className="shimmer-item shimmer-img"></div>
-                      <div className="shimmer-item shimmer-title"></div>
-                      <div className="shimmer-item shimmer-text"></div>
-                      <div className="shimmer-item shimmer-text" style={{ width: '85%' }}></div>
-                      <div className="shimmer-item shimmer-price"></div>
-                    </div>
-                  ))}
-                </div>
-              ) : products.length === 0 ? (
-                <div style={{ padding: '4rem 0', color: 'var(--text-muted)', textAlign: 'center' }}>
-                  <p>No products match your search or filter settings.</p>
-                </div>
-              ) : (
-                <div className="catalog-grid">
-                  {products.map((p) => (
-                    <div className="product-card" key={p._id}>
-                      <div className="product-img-wrapper">
-                        <span className="category-tag">{p.category}</span>
-                        {p.score !== undefined && (
-                          <span className="score-tag">
-                            AI Match: {Math.round(p.score * 100)}%
-                          </span>
-                        )}
-                        <img className="product-img" src={p.imageUrl} alt={p.name} loading="lazy" />
+              {/* Shimmer loading grids vs Products Catalog grid vs Category-Wise layout */}
+              {isCategoryWiseMode && !searchTerm ? (
+                categoryWiseLoading ? (
+                  <div className="shimmer-container">
+                    {Array.from({ length: 6 }).map((_, idx) => (
+                      <div className="shimmer-card" key={idx}>
+                        <div className="shimmer-item shimmer-img"></div>
+                        <div className="shimmer-item shimmer-title"></div>
+                        <div className="shimmer-item shimmer-price"></div>
                       </div>
-                      <div className="product-info">
-                        <h4 className="product-name">{highlightKeywords(p.name, searchTerm)}</h4>
-                        <p className="product-desc">{highlightKeywords(p.description, searchTerm)}</p>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                          <span className={`product-stock ${p.stock < 50 ? 'low-stock' : ''}`}>
-                            {p.stock === 0 ? 'Out of Stock' : `${p.stock} in stock`}
-                          </span>
-                        </div>
-                        <div className="product-footer" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.6rem' }}>
-                          <span className="product-price">${p.price.toFixed(2)}</span>
+                    ))}
+                  </div>
+                ) : categoryWiseProducts.length === 0 ? (
+                  <div style={{ padding: '4rem 0', color: 'var(--text-muted)', textAlign: 'center' }}>
+                    <p>No categories found.</p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem', padding: '0 1.5rem 2rem 1.5rem' }}>
+                    {categoryWiseProducts.map((catGroup) => (
+                      <div key={catGroup.category} className="category-section" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            {catGroup.category}
+                            <span style={{ fontSize: '0.7rem', fontWeight: 500, backgroundColor: 'var(--bg-main)', border: '1px solid var(--border-color)', color: 'var(--text-muted)', padding: '2px 8px', borderRadius: '12px' }}>
+                              {catGroup.count} products
+                            </span>
+                          </h3>
                           <button
-                            onClick={(e) => addToCart(p, e)}
-                            disabled={p.stock === 0}
-                            className="btn btn-primary"
+                            onClick={() => {
+                              setSelectedCategory(catGroup.category);
+                              setIsCategoryWiseMode(false);
+                              setCurrentPage(1);
+                            }}
                             style={{
-                              padding: '0.35rem 0.75rem',
-                              fontSize: '0.8rem',
-                              background: p.stock === 0 ? 'var(--border-color)' : 'linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%)',
-                              cursor: p.stock === 0 ? 'not-allowed' : 'pointer',
+                              background: 'none',
                               border: 'none',
+                              color: 'var(--primary-light)',
+                              fontSize: '0.8rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.2rem'
                             }}
                           >
-                            Add to Cart
+                            View All &rarr;
                           </button>
                         </div>
+
+                        {/* Horizontal Scroll Carousel */}
+                        <div 
+                          className="category-carousel-row"
+                          style={{
+                            display: 'flex',
+                            gap: '1.25rem',
+                            overflowX: 'auto',
+                            paddingBottom: '0.75rem',
+                            scrollSnapType: 'x mandatory',
+                            WebkitOverflowScrolling: 'touch',
+                            scrollbarWidth: 'thin'
+                          }}
+                        >
+                          {catGroup.products.map((p) => (
+                            <div 
+                              className="product-card" 
+                              key={p._id}
+                              style={{
+                                minWidth: '240px',
+                                width: '240px',
+                                flexShrink: 0,
+                                margin: '0.25rem 0',
+                                scrollSnapAlign: 'start',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                height: '360px',
+                                justifyContent: 'space-between'
+                              }}
+                            >
+                              <div className="product-img-wrapper" style={{ height: '160px' }}>
+                                <span className="category-tag">{p.category}</span>
+                                <img
+                                  className="product-img"
+                                  src={p.imageUrl || getLoremFlickrUrl(p.name, p.category)}
+                                  alt={p.name}
+                                  loading="lazy"
+                                  onError={(e) => {
+                                    const t = e.currentTarget;
+                                    t.onerror = null;
+                                    t.src = getLoremFlickrUrl(p.name, p.category);
+                                  }}
+                                />
+                              </div>
+                              <div className="product-info" style={{ padding: '0.75rem', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                                <div>
+                                  <h4 className="product-name" style={{ fontSize: '0.82rem', marginBottom: '0.25rem', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }} title={p.name}>
+                                    {p.name}
+                                  </h4>
+                                  <p className="product-desc" style={{ fontSize: '0.72rem', height: '32px', marginBottom: '0.5rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                    {p.description}
+                                  </p>
+                                </div>
+                                <div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                    <span className={`product-stock ${p.stock < 50 ? 'low-stock' : ''}`}>
+                                      {p.stock === 0 ? 'Out of Stock' : `${p.stock} in stock`}
+                                    </span>
+                                  </div>
+                                  <div className="product-footer" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span className="product-price" style={{ fontSize: '0.85rem' }}>${p.price.toFixed(2)}</span>
+                                    <button
+                                      onClick={(e) => addToCart(p, e)}
+                                      disabled={p.stock === 0}
+                                      className="btn btn-primary"
+                                      style={{
+                                        padding: '0.25rem 0.6rem',
+                                        fontSize: '0.75rem',
+                                        background: p.stock === 0 ? 'var(--border-color)' : 'linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%)',
+                                        cursor: p.stock === 0 ? 'not-allowed' : 'pointer',
+                                        border: 'none',
+                                      }}
+                                    >
+                                      Add
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
+                    ))}
+                  </div>
+                )
+              ) : (
+                <>
+                  {loading ? (
+                    <div className="shimmer-container">
+                      {Array.from({ length: 8 }).map((_, idx) => (
+                        <div className="shimmer-card" key={idx}>
+                          <div className="shimmer-item shimmer-img"></div>
+                          <div className="shimmer-item shimmer-title"></div>
+                          <div className="shimmer-item shimmer-text"></div>
+                          <div className="shimmer-item shimmer-text" style={{ width: '85%' }}></div>
+                          <div className="shimmer-item shimmer-price"></div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
+                  ) : products.length === 0 ? (
+                    <div style={{ padding: '4rem 0', color: 'var(--text-muted)', textAlign: 'center' }}>
+                      <p>No products match your search or filter settings.</p>
+                    </div>
+                  ) : (
+                    <div className="catalog-grid">
+                      {products.map((p) => (
+                        <div className="product-card" key={p._id}>
+                          <div className="product-img-wrapper">
+                            <span className="category-tag">{p.category}</span>
+                            {p.score !== undefined && (
+                              <span className="score-tag">
+                                AI Match: {Math.round(p.score * 100)}%
+                              </span>
+                            )}
+                            <img
+                              className="product-img"
+                              src={p.imageUrl || getLoremFlickrUrl(p.name, p.category)}
+                              alt={p.name}
+                              loading="lazy"
+                              onError={(e) => {
+                                const t = e.currentTarget;
+                                t.onerror = null;
+                                t.src = getLoremFlickrUrl(p.name, p.category);
+                              }}
+                            />
+                          </div>
+                          <div className="product-info">
+                            <h4 className="product-name">{highlightKeywords(p.name, searchTerm)}</h4>
+                            <p className="product-desc">{highlightKeywords(p.description, searchTerm)}</p>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                              <span className={`product-stock ${p.stock < 50 ? 'low-stock' : ''}`}>
+                                {p.stock === 0 ? 'Out of Stock' : `${p.stock} in stock`}
+                              </span>
+                            </div>
+                            <div className="product-footer" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.6rem' }}>
+                              <span className="product-price">${p.price.toFixed(2)}</span>
+                              <button
+                                onClick={(e) => addToCart(p, e)}
+                                disabled={p.stock === 0}
+                                className="btn btn-primary"
+                                style={{
+                                  padding: '0.35rem 0.75rem',
+                                  fontSize: '0.8rem',
+                                  background: p.stock === 0 ? 'var(--border-color)' : 'linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%)',
+                                  cursor: p.stock === 0 ? 'not-allowed' : 'pointer',
+                                  border: 'none',
+                                }}
+                              >
+                                Add to Cart
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
-              {/* Pagination controls footer */}
-              {totalPages > 1 && (
-                <div 
-                  style={{
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    alignItems: 'center', 
-                    marginTop: '2rem',
-                    paddingTop: '1rem',
-                    borderTop: '1px solid var(--border-color)'
-                  }}
-                >
-                  <button
-                    disabled={currentPage === 1 || loading}
-                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                    style={{
-                      backgroundColor: 'var(--bg-main)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: 'var(--radius-sm)',
-                      padding: '0.5rem 1rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      fontSize: '0.85rem',
-                      cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-                      opacity: currentPage === 1 ? 0.5 : 1
-                    }}
-                  >
-                    <ChevronLeft size={16} />
-                    Previous
-                  </button>
+                  {/* Pagination controls footer */}
+                  {totalPages > 1 && (
+                    <div 
+                      style={{
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center', 
+                        marginTop: '2rem',
+                        paddingTop: '1rem',
+                        borderTop: '1px solid var(--border-color)'
+                      }}
+                    >
+                      <button
+                        disabled={currentPage === 1 || loading}
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        style={{
+                          backgroundColor: 'var(--bg-main)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: 'var(--radius-sm)',
+                          padding: '0.5rem 1rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          fontSize: '0.85rem',
+                          cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                          opacity: currentPage === 1 ? 0.5 : 1
+                        }}
+                      >
+                        <ChevronLeft size={16} />
+                        Previous
+                      </button>
 
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    Page {currentPage} of {totalPages}
-                  </span>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                        Page {currentPage} of {totalPages}
+                      </span>
 
-                  <button
-                    disabled={currentPage >= totalPages || loading}
-                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                    style={{
-                      backgroundColor: 'var(--bg-main)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: 'var(--radius-sm)',
-                      padding: '0.5rem 1rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      fontSize: '0.85rem',
-                      cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer',
-                      opacity: currentPage >= totalPages ? 0.5 : 1
-                    }}
-                  >
-                    Next
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
+                      <button
+                        disabled={currentPage >= totalPages || loading}
+                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                        style={{
+                          backgroundColor: 'var(--bg-main)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: 'var(--radius-sm)',
+                          padding: '0.5rem 1rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          fontSize: '0.85rem',
+                          cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer',
+                          opacity: currentPage >= totalPages ? 0.5 : 1
+                        }}
+                      >
+                        Next
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -1381,7 +1657,7 @@ function App() {
                     }}
                   >
                     <option value="">All Categories</option>
-                    {CATEGORIES.map((cat, idx) => (
+                    {dynamicCategories.map((cat, idx) => (
                       <option key={idx} value={cat}>{cat}</option>
                     ))}
                   </select>
@@ -1392,7 +1668,7 @@ function App() {
                   </span>
                   <button 
                     className="btn btn-primary"
-                    onClick={() => setEditingProduct({ _id: '', name: '', description: '', price: 0, stock: 0, category: CATEGORIES[0], tags: [], imageUrl: '' } as any)}
+                    onClick={() => setEditingProduct({ _id: '', name: '', description: '', price: 0, stock: 0, category: dynamicCategories[0] || CATEGORIES[0], tags: [], imageUrl: '' } as any)}
                   >
                     Create Product
                   </button>
@@ -1595,7 +1871,7 @@ function App() {
                   value={formCategory}
                   onChange={(e) => setFormCategory(e.target.value)}
                 >
-                  {CATEGORIES.map((cat, idx) => (
+                  {dynamicCategories.map((cat, idx) => (
                     <option key={idx} value={cat}>{cat}</option>
                   ))}
                 </select>
@@ -1766,10 +2042,15 @@ function App() {
                       position: 'relative'
                     }}
                   >
-                    <img 
-                      src={item.product.imageUrl} 
-                      alt={item.product.name} 
+                    <img
+                      src={item.product.imageUrl || getLoremFlickrUrl(item.product.name, item.product.category, 120, 120)}
+                      alt={item.product.name}
                       style={{ width: '60px', height: '60px', borderRadius: '4px', objectFit: 'cover' }}
+                      onError={(e) => {
+                        const t = e.currentTarget;
+                        t.onerror = null;
+                        t.src = getLoremFlickrUrl(item.product.name, item.product.category, 120, 120);
+                      }}
                     />
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                       <div>
@@ -1848,10 +2129,15 @@ function App() {
                         gap: '0.4rem'
                       }}
                     >
-                      <img 
-                        src={rec.imageUrl} 
+                      <img
+                        src={rec.imageUrl || getLoremFlickrUrl(rec.name, rec.category, 270, 160)}
                         alt={rec.name}
                         style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '4px' }}
+                        onError={(e) => {
+                          const t = e.currentTarget;
+                          t.onerror = null;
+                          t.src = getLoremFlickrUrl(rec.name, rec.category, 270, 160);
+                        }}
                       />
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                         <div>

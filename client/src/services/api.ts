@@ -198,4 +198,9 @@ export const api = {
   getProductRecommendations: (id: string, limit = 3) => {
     return request<ApiProduct[]>(`/products/${id}/recommendations?limit=${limit}`);
   },
+
+  getCategoryWiseProducts: () => {
+    return request<Array<{ category: string; count: number; products: ApiProduct[] }>>('/products/category-wise');
+  },
 };
+

@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { Product } from '../models/Product';
 import { BadRequestError, NotFoundError } from '../utils/errors';
 import { getCache, setCache, delCache, delCachePattern, isRedisConnected } from '../config/redis';
+import { getAIEmbedding } from '../config/embedder';
 
 // Retrieve product listings with Redis Cache-Aside optimizations
 export const getProducts = async (
@@ -490,7 +491,7 @@ export const searchProductsVector = async (
       parsedQuery.category = categoryFilter;
     }
 
-    const queryVector = getQueryEmbedding(search, 384);
+    const queryVector = await getAIEmbedding(search);
     const queryWords = search.toLowerCase().split(/\s+/).filter(w => w.length > 2);
 
     let candidates: any[] = [];
@@ -670,7 +671,7 @@ export const getProductRecommendations = async (
 
     const queryVector = targetProduct.vectorEmbedding && targetProduct.vectorEmbedding.length > 0
       ? targetProduct.vectorEmbedding
-      : getQueryEmbedding(targetProduct.description || targetProduct.name, 384);
+      : await getAIEmbedding(targetProduct.description || targetProduct.name);
 
     // Retrieve candidate products excluding current product
     const candidates = await Product.find(
@@ -727,4 +728,67 @@ export const getProductRecommendations = async (
     next(error);
   }
 };
+
+// Retrieve products grouped category-wise (with Redis Cache-Aside TTL: 1 hour)
+export const getCategoryWiseProducts = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  const startTime = performance.now();
+  try {
+    const cacheKey = 'products:categorywise';
+    const cachedData = await getCache(cacheKey);
+
+    if (cachedData) {
+      const endTime = performance.now();
+      const latency = parseFloat((endTime - startTime).toFixed(2));
+      res.setHeader('X-Cache', 'HIT');
+      res.setHeader('X-Response-Time', `${latency}ms`);
+      res.status(200).json({
+        status: 'success',
+        data: JSON.parse(cachedData),
+      });
+      return;
+    }
+
+    // 1. Get top categories by product count
+    const topCategories = await Product.aggregate([
+      { $group: { _id: '$category', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 10 }
+    ]);
+
+    // 2. Fetch up to 6 products for each category
+    const results = [];
+    for (const cat of topCategories) {
+      if (!cat._id) continue;
+      const products = await Product.find({ category: cat._id })
+        .select('-vectorEmbedding')
+        .limit(6);
+      
+      results.push({
+        category: cat._id,
+        count: cat.count,
+        products
+      });
+    }
+
+    // Save cache (1 hour)
+    await setCache(cacheKey, JSON.stringify(results), 3600);
+
+    const endTime = performance.now();
+    const latency = parseFloat((endTime - startTime).toFixed(2));
+
+    res.setHeader('X-Cache', isRedisConnected() ? 'MISS' : 'BYPASS');
+    res.setHeader('X-Response-Time', `${latency}ms`);
+    res.status(200).json({
+      status: 'success',
+      data: results,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 

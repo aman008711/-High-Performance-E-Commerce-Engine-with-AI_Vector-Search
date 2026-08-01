@@ -6,7 +6,8 @@ import {
   updateProduct,
   deleteProduct,
   searchProductsVector,
-  getProductRecommendations
+  getProductRecommendations,
+  getCategoryWiseProducts
 } from '../controllers/productController';
 import { apiRateLimiter, mutationRateLimiter } from '../middleware/rateLimiter';
 import { adminAuth } from '../middleware/auth';
@@ -18,6 +19,9 @@ router.use(apiRateLimiter);
 
 // AI Vector Semantic Search Endpoint
 router.get('/search/vector', searchProductsVector);
+
+// Retrieve category-wise product listings
+router.get('/category-wise', getCategoryWiseProducts);
 
 // Retrieve product listings
 router.get('/', getProducts);

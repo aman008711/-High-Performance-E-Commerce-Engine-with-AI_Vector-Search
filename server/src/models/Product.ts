@@ -108,6 +108,11 @@ productSchema.index(
   { weights: { name: 10, description: 5 }, name: 'TextIndex' }
 );
 
+// Optimized compound indexes for layered filters and queries
+productSchema.index({ category: 1, price: 1 });
+productSchema.index({ brand: 1, price: 1 });
+productSchema.index({ subcategory: 1, price: 1 });
+
 // Automatically enforce validation checks on update mutations
 productSchema.pre('findOneAndUpdate', function (next) {
   this.setOptions({ runValidators: true });

@@ -12,6 +12,8 @@ import productRouter from './routes/productRoutes';
 import authRouter from './routes/authRoutes';
 import checkoutRouter from './routes/checkoutRoutes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+import compression from 'compression';
+import { initEmbedder } from './config/embedder';
 
 let ioInstance: SocketIOServer | null = null;
 
@@ -20,6 +22,9 @@ export const getIO = (): SocketIOServer | null => {
 };
 
 const app = express();
+
+// Compress response payloads
+app.use(compression());
 
 // Security HTTP headers
 app.use(helmet());
@@ -82,6 +87,9 @@ const startServer = async () => {
   try {
     // Connect to MongoDB
     await connectDB();
+
+    // Initialize Local ONNX Embedder Pipeline
+    await initEmbedder();
 
     const server = http.createServer(app);
 

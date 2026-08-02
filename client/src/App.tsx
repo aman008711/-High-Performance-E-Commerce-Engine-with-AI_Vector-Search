@@ -212,6 +212,8 @@ function App() {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [sortBy, setSortBy] = useState<string>('createdAt');
+  const [sortOrder, setSortOrder] = useState<string>('desc');
   const [searchTelemetry, setSearchTelemetry] = useState<any>(null);
 
   const [categoryWiseProducts, setCategoryWiseProducts] = useState<Array<{ category: string; count: number; products: ApiProduct[] }>>([]);
@@ -615,13 +617,17 @@ function App() {
             page: currentPage,
             limit: 12,
             category: selectedCategory || undefined,
-            search: debouncedSearchTerm
+            search: debouncedSearchTerm,
+            sortBy,
+            sortOrder
           })
         : api.getProducts({
             page: currentPage,
             limit: 12,
             category: selectedCategory || undefined,
-            search: undefined
+            search: undefined,
+            sortBy,
+            sortOrder
           });
 
       const response = await fetchPromise;
@@ -638,7 +644,8 @@ function App() {
       const basePath = debouncedSearchTerm ? '/api/products/search/vector' : '/api/products';
       const pathStr = `${basePath}?page=${currentPage}&limit=12` + 
                       (selectedCategory ? `&category=${selectedCategory}` : '') +
-                      (debouncedSearchTerm ? `&search=${encodeURIComponent(debouncedSearchTerm)}` : '');
+                      (debouncedSearchTerm ? `&search=${encodeURIComponent(debouncedSearchTerm)}` : '') +
+                      `&sortBy=${sortBy}&sortOrder=${sortOrder}`;
                       
       const newLog = {
         method: 'GET',
@@ -652,14 +659,14 @@ function App() {
       setAvgLatency(prev => parseFloat(((prev * 0.9) + (response.latency * 0.1)).toFixed(1)));
       
       if (response.cacheStatus === 'HIT') {
-        setCacheHitRate(prev => parseFloat(((prev * 0.95) + 5).toFixed(1)));
+         setCacheHitRate(prev => parseFloat(((prev * 0.95) + 5).toFixed(1)));
       } else if (response.cacheStatus === 'MISS') {
         setCacheHitRate(prev => parseFloat(((prev * 0.95)).toFixed(1)));
       }
 
     } catch (error) {
       // Endpoint is 404 (Route not built on server until Day 10). Perform local client-side data mirroring.
-      const fallbackData = getMockProducts(debouncedSearchTerm, selectedCategory, currentPage);
+      const fallbackData = getMockProducts(debouncedSearchTerm, selectedCategory, currentPage, sortBy, sortOrder);
       
       // Inject standard latency delay (600ms) to demonstrate loading skeletons
       await new Promise(resolve => setTimeout(resolve, 600));
@@ -670,7 +677,8 @@ function App() {
 
       const pathStr = `/api/products?page=${currentPage}&limit=12` + 
                       (selectedCategory ? `&category=${selectedCategory}` : '') +
-                      (debouncedSearchTerm ? `&search=${encodeURIComponent(debouncedSearchTerm)}` : '');
+                      (debouncedSearchTerm ? `&search=${encodeURIComponent(debouncedSearchTerm)}` : '') +
+                      `&sortBy=${sortBy}&sortOrder=${sortOrder}`;
 
       const simulatedLatency = Math.floor(Math.random() * 45) + 65; // Simulated DB round trip: 65-110ms
       const newLog = {
@@ -728,14 +736,21 @@ function App() {
     fetchCategoryWiseProducts();
   }, []);
 
-  // Re-run search whenever page, category, search mode, or debounced keyword updates
+  // Re-run search whenever page, category, search mode, debounced keyword, or sorting updates
   useEffect(() => {
     fetchProducts();
-  }, [currentPage, selectedCategory, debouncedSearchTerm, isVectorSearch]);
+  }, [currentPage, selectedCategory, debouncedSearchTerm, isVectorSearch, sortBy, sortOrder]);
 
 
   const handleSearch = (e: ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
+  };
+
+  const handleSortChange = (e: ChangeEvent<HTMLSelectElement>) => {
+    const [field, order] = e.target.value.split(':');
+    setSortBy(field);
+    setSortOrder(order);
+    setCurrentPage(1);
   };
 
   const handleCategoryClick = (category: string) => {
@@ -760,7 +775,8 @@ function App() {
   };
 
   // Local static mock product generator matching seed schemas for client side fallbacks
-  const getMockProducts = (search: string, cat: string, page: number) => {
+  // Local static mock product generator matching seed schemas for client side fallbacks
+  const getMockProducts = (search: string, cat: string, page: number, sortBy = 'createdAt', sortOrder = 'desc') => {
     const baseProducts = [
       { name: 'UltraHD Smart OLED TV', cat: 'Electronics', price: 649.99, img: 'https://picsum.photos/seed/elec1/500/400' },
       { name: 'Soundcore Pro Wireless Headset', cat: 'Electronics', price: 119.99, img: 'https://picsum.photos/seed/elec2/500/400' },
@@ -809,6 +825,13 @@ function App() {
         item.name.toLowerCase().includes(queryStr) || 
         item.description.toLowerCase().includes(queryStr)
       );
+    }
+
+    // Sort mock products
+    if (sortBy === 'price') {
+      items.sort((a, b) => sortOrder === 'asc' ? a.price - b.price : b.price - a.price);
+    } else if (sortBy === 'name') {
+      items.sort((a, b) => sortOrder === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name));
     }
 
     const total = items.length;
@@ -1352,6 +1375,27 @@ function App() {
                     {dynamicCategories.map((cat, idx) => (
                       <option key={idx} value={cat}>{cat}</option>
                     ))}
+                  </select>
+
+                  <select
+                    value={`${sortBy}:${sortOrder}`}
+                    onChange={handleSortChange}
+                    style={{
+                      backgroundColor: 'var(--bg-main)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '0.5rem 1.5rem 0.5rem 0.75rem',
+                      fontSize: '0.9rem',
+                      color: 'var(--text-main)',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="createdAt:desc">Newest Products</option>
+                    <option value="price:asc">Price: Low to High</option>
+                    <option value="price:desc">Price: High to Low</option>
+                    <option value="name:asc">Product Name: A-Z</option>
+                    <option value="name:desc">Product Name: Z-A</option>
                   </select>
                 </div>
                 <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
@@ -1903,6 +1947,27 @@ function App() {
                     {dynamicCategories.map((cat, idx) => (
                       <option key={idx} value={cat}>{cat}</option>
                     ))}
+                  </select>
+
+                  <select
+                    value={`${sortBy}:${sortOrder}`}
+                    onChange={handleSortChange}
+                    style={{
+                      backgroundColor: 'var(--bg-main)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '0.5rem 1.5rem 0.5rem 0.75rem',
+                      fontSize: '0.9rem',
+                      color: 'var(--text-main)',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="createdAt:desc">Newest Products</option>
+                    <option value="price:asc">Price: Low to High</option>
+                    <option value="price:desc">Price: High to Low</option>
+                    <option value="name:asc">Product Name: A-Z</option>
+                    <option value="name:desc">Product Name: Z-A</option>
                   </select>
                 </div>
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>

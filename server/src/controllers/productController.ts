@@ -17,9 +17,11 @@ export const getProducts = async (
     const limit = Math.max(1, Math.min(100, parseInt(req.query.limit as string) || 12));
     const category = req.query.category as string;
     const search = req.query.search as string;
+    const sortBy = (req.query.sortBy as string) || 'createdAt';
+    const sortOrder = (req.query.sortOrder as string) || 'desc';
 
     // Construct a deterministic cache key representation matching search parameters
-    const cacheKey = `products:all:page_${page}:limit_${limit}:cat_${category || 'none'}:search_${search || 'none'}`;
+    const cacheKey = `products:all:page_${page}:limit_${limit}:cat_${category || 'none'}:search_${search || 'none'}:sortBy_${sortBy}:sortOrder_${sortOrder}`;
 
     // Attempt cache lookup
     const cachedData = await getCache(cacheKey);
@@ -66,8 +68,10 @@ export const getProducts = async (
         .select({ score: { $meta: 'textScore' } })
         .sort({ score: { $meta: 'textScore' } });
     } else {
-      // Default to sorting by creation date
-      query = query.sort({ createdAt: -1 });
+      // Apply custom sorting
+      const sortField = sortBy === 'price' ? 'price' : sortBy === 'name' ? 'name' : 'createdAt';
+      const sortDirection = sortOrder === 'asc' ? 1 : -1;
+      query = query.sort({ [sortField]: sortDirection });
     }
 
     const products = await query.skip(skip).limit(limit);
@@ -458,6 +462,8 @@ export const searchProductsVector = async (
     const categoryFilter = req.query.category as string; // From UI dropdown category select
     const page = parseInt(req.query.page as string, 10) || 1;
     const limit = parseInt(req.query.limit as string, 10) || 12;
+    const sortBy = req.query.sortBy as string;
+    const sortOrder = req.query.sortOrder as string;
 
     if (!search) {
       throw new BadRequestError('Search query parameter is required for hybrid search');
@@ -466,7 +472,7 @@ export const searchProductsVector = async (
     const startTime = performance.now();
     
     // Include categoryFilter inside cacheKey so categories selected in dropdown are isolated
-    const cacheKey = `products:hybrid:search_${search.replace(/\s+/g, '_')}:cat_${categoryFilter || 'all'}:page_${page}:limit_${limit}`;
+    const cacheKey = `products:hybrid:search_${search.replace(/\s+/g, '_')}:cat_${categoryFilter || 'all'}:page_${page}:limit_${limit}:sortBy_${sortBy || 'none'}:sortOrder_${sortOrder || 'none'}`;
 
     // Check Redis cache first
     const cachedResult = await getCache(cacheKey);
@@ -595,8 +601,21 @@ export const searchProductsVector = async (
       };
     });
 
-    // Sort by hybrid score descending
-    scoredCandidates.sort((a, b) => b.score - a.score);
+    // Sort candidates based on custom sorting parameters if specified
+    if (sortBy === 'price') {
+      scoredCandidates.sort((a, b) => sortOrder === 'asc' ? a.price - b.price : b.price - a.price);
+    } else if (sortBy === 'name') {
+      scoredCandidates.sort((a, b) => sortOrder === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name));
+    } else if (sortBy === 'createdAt') {
+      scoredCandidates.sort((a, b) => {
+        const d1 = new Date(a.createdAt).getTime();
+        const d2 = new Date(b.createdAt).getTime();
+        return sortOrder === 'asc' ? d1 - d2 : d2 - d1;
+      });
+    } else {
+      // Default: Sort by hybrid score descending
+      scoredCandidates.sort((a, b) => b.score - a.score);
+    }
 
     // Limit returned products list
     const total = scoredCandidates.length;

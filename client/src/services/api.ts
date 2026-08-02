@@ -63,6 +63,8 @@ export interface ProductQuery {
   limit?: number;
   category?: string;
   search?: string;
+  sortBy?: string;
+  sortOrder?: string;
 }
 
 export interface ProductInput {
@@ -108,6 +110,8 @@ export const api = {
     if (params.limit) query.append('limit', params.limit.toString());
     if (params.category) query.append('category', params.category);
     if (params.search) query.append('search', params.search);
+    if (params.sortBy) query.append('sortBy', params.sortBy);
+    if (params.sortOrder) query.append('sortOrder', params.sortOrder);
 
     const queryString = query.toString() ? `?${query.toString()}` : '';
     return request<{ products: ApiProduct[]; total: number; pages: number }>(`/products${queryString}`);
@@ -119,6 +123,8 @@ export const api = {
     if (params.limit) query.append('limit', params.limit.toString());
     if (params.category) query.append('category', params.category);
     if (params.search) query.append('search', params.search || '');
+    if (params.sortBy) query.append('sortBy', params.sortBy);
+    if (params.sortOrder) query.append('sortOrder', params.sortOrder);
 
     const queryString = query.toString() ? `?${query.toString()}` : '';
     return request<{ 

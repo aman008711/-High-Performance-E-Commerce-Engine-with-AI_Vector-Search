@@ -1025,5 +1025,55 @@ input::placeholder, textarea::placeholder {
   animation: pop-badge 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
+/* Carousel Scroll Buttons Styles */
+.carousel-wrapper-container {
+  position: relative;
+  width: 100%;
+}
+
+.carousel-scroll-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%) scale(0.9);
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background-color: rgba(30, 41, 59, 0.7);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.carousel-wrapper-container:hover .carousel-scroll-btn {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-50%) scale(1);
+}
+
+.carousel-scroll-btn:hover {
+  background-color: var(--primary);
+  border-color: var(--primary-light);
+  color: #fff;
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.5);
+}
+
+.carousel-scroll-btn.left {
+  left: -15px;
+}
+
+.carousel-scroll-btn.right {
+  right: -15px;
+}
+
+
 
 

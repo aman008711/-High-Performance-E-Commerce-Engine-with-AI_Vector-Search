@@ -178,6 +178,7 @@ const getLoremFlickrUrl = (name: string, category: string, width = 500, height =
 
 function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'catalog' | 'admin' | 'logs'>('dashboard');
+  const [hoveredSlice, setHoveredSlice] = useState<number | null>(null);
   const [apiStatus, setApiStatus] = useState<'Online' | 'Offline' | 'Checking'>('Checking');
   const [dbStatus, setDbStatus] = useState<'Connected' | 'Disconnected' | 'Checking'>('Checking');
   const [editingProduct, setEditingProduct] = useState<ApiProduct | null>(null);
@@ -737,6 +738,13 @@ function App() {
     setSearchTerm(e.target.value);
   };
 
+  const handleCategoryClick = (category: string) => {
+    setSelectedCategory(category);
+    setIsCategoryWiseMode(false);
+    setActiveTab('catalog');
+    setCurrentPage(1);
+  };
+
   const handleDelete = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this product?')) {
       setDeletingId(id);
@@ -811,6 +819,56 @@ function App() {
 
     return { list, total, pages };
   };
+
+  const CHART_COLORS = [
+    '#6366f1', // Indigo
+    '#10b981', // Emerald
+    '#06b6d4', // Cyan
+    '#8b5cf6', // Violet
+    '#f59e0b', // Amber
+    '#ec4899', // Pink
+    '#ef4444', // Red
+    '#3b82f6', // Blue
+    '#14b8a6', // Teal
+    '#84cc16', // Lime
+  ];
+
+  const totalCategoryProducts = categoryWiseProducts.reduce((sum, c) => sum + c.count, 0);
+
+  let cumulativeAngle = -Math.PI / 2;
+  const chartSegments = categoryWiseProducts.map((catGroup, index) => {
+    const percentage = totalCategoryProducts > 0 ? (catGroup.count / totalCategoryProducts) : 0;
+    const angleDelta = percentage * 2 * Math.PI;
+    const startAngle = cumulativeAngle;
+    const endAngle = cumulativeAngle + angleDelta;
+    cumulativeAngle = endAngle;
+
+    const radius = 80;
+    const innerRadius = 55;
+
+    const x1 = Math.cos(startAngle) * radius;
+    const y1 = Math.sin(startAngle) * radius;
+    const x2 = Math.cos(endAngle) * radius;
+    const y2 = Math.sin(endAngle) * radius;
+
+    const ix1 = Math.cos(startAngle) * innerRadius;
+    const iy1 = Math.sin(startAngle) * innerRadius;
+    const ix2 = Math.cos(endAngle) * innerRadius;
+    const iy2 = Math.sin(endAngle) * innerRadius;
+
+    const largeArcFlag = percentage > 0.5 ? 1 : 0;
+
+    const pathData = `M ${x1} ${y1} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2} L ${ix2} ${iy2} A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 0 ${ix1} ${iy1} Z`.trim();
+
+    return {
+      category: catGroup.category,
+      count: catGroup.count,
+      percentage: (percentage * 100).toFixed(1),
+      pathData,
+      color: CHART_COLORS[index % CHART_COLORS.length],
+      rawPercentage: percentage * 100
+    };
+  });
 
   const statsList = [
     { label: 'Total Catalog Products', value: totalProducts ? totalProducts.toLocaleString() : '5,000', desc: 'Active records count', icon: Database, color: 'var(--secondary-light)' },
@@ -1056,6 +1114,163 @@ function App() {
                   <span style={{ color: 'var(--primary-light)', cursor: 'pointer', fontSize: '0.8rem' }} onClick={fetchProducts}>
                     Recalculate metrics
                   </span>
+                </div>
+              </div>
+
+              {/* Category Distribution Donut Chart Panel */}
+              <div className="section-panel" style={{ marginBottom: '2rem' }}>
+                <div className="panel-header-section">
+                  <h3>Catalog Category Distribution</h3>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    Interactive analysis of products across top classifications
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', gap: '2.5rem', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', marginTop: '1rem' }}>
+                  {/* Left Column: Interactive Donut Chart */}
+                  <div style={{ position: 'relative', width: '220px', height: '220px', flexShrink: 0 }}>
+                    <svg viewBox="-100 -100 200 200" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
+                      {chartSegments.map((segment, idx) => {
+                        const isHovered = hoveredSlice === idx;
+                        return (
+                          <path
+                            key={idx}
+                            d={segment.pathData}
+                            fill={segment.color}
+                            style={{
+                              transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                              cursor: 'pointer',
+                              transform: isHovered ? 'scale(1.06)' : 'scale(1)',
+                              filter: isHovered ? `drop-shadow(0 0 8px ${segment.color}88)` : 'none',
+                              opacity: hoveredSlice !== null && !isHovered ? 0.65 : 1
+                            }}
+                            onMouseEnter={() => setHoveredSlice(idx)}
+                            onMouseLeave={() => setHoveredSlice(null)}
+                            onClick={() => handleCategoryClick(segment.category)}
+                          />
+                        );
+                      })}
+                    </svg>
+
+                    {/* Donut Center Tooltip Information */}
+                    <div style={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      textAlign: 'center',
+                      pointerEvents: 'none',
+                      width: '100px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'center',
+                      alignItems: 'center'
+                    }}>
+                      {hoveredSlice !== null ? (
+                        <>
+                          <span style={{ 
+                            fontSize: '0.72rem', 
+                            color: 'var(--text-muted)', 
+                            fontWeight: 600, 
+                            textTransform: 'uppercase', 
+                            whiteSpace: 'nowrap', 
+                            overflow: 'hidden', 
+                            textOverflow: 'ellipsis', 
+                            width: '90px' 
+                          }} title={chartSegments[hoveredSlice].category}>
+                            {chartSegments[hoveredSlice].category}
+                          </span>
+                          <span style={{ 
+                            fontSize: '1.05rem', 
+                            fontWeight: 800, 
+                            color: chartSegments[hoveredSlice].color, 
+                            marginTop: '2px',
+                            textShadow: `0 0 6px ${chartSegments[hoveredSlice].color}44`
+                          }}>
+                            {chartSegments[hoveredSlice].percentage}%
+                          </span>
+                          <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '1px' }}>
+                            {chartSegments[hoveredSlice].count} items
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            Catalog
+                          </span>
+                          <span style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-main)', marginTop: '2px' }}>
+                            {totalCategoryProducts}
+                          </span>
+                          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '1px' }}>
+                            items
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right Column: Premium Legend Grid */}
+                  <div style={{ flex: 1, minWidth: '240px', display: 'grid', gridTemplateColumns: '1fr', gap: '0.6rem' }}>
+                    {chartSegments.length === 0 ? (
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No data loaded. Try catalog navigation first.</div>
+                    ) : (
+                      chartSegments.map((segment, idx) => {
+                        const isHovered = hoveredSlice === idx;
+                        return (
+                          <div
+                            key={idx}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '0.4rem 0.75rem',
+                              borderRadius: '6px',
+                              backgroundColor: isHovered ? 'rgba(255, 255, 255, 0.03)' : 'transparent',
+                              border: isHovered ? '1px solid var(--border-color)' : '1px solid transparent',
+                              transition: 'all 0.2s',
+                              cursor: 'pointer',
+                              transform: isHovered ? 'translateX(5px)' : 'translateX(0)'
+                            }}
+                            onMouseEnter={() => setHoveredSlice(idx)}
+                            onMouseLeave={() => setHoveredSlice(null)}
+                            onClick={() => handleCategoryClick(segment.category)}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                              <span style={{
+                                width: '10px',
+                                height: '10px',
+                                borderRadius: '50%',
+                                backgroundColor: segment.color,
+                                boxShadow: isHovered ? `0 0 8px ${segment.color}` : 'none',
+                                display: 'inline-block',
+                                flexShrink: 0
+                              }} />
+                              <span style={{
+                                fontSize: '0.85rem',
+                                color: isHovered ? 'var(--text-main)' : 'var(--text-muted)',
+                                fontWeight: isHovered ? 600 : 500
+                              }}>
+                                {segment.category}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.8rem' }}>
+                              <span style={{ color: 'var(--text-muted)' }}>
+                                {segment.count} products
+                              </span>
+                              <span style={{
+                                fontWeight: 700,
+                                color: isHovered ? segment.color : 'var(--text-main)',
+                                minWidth: '40px',
+                                textAlign: 'right'
+                              }}>
+                                {segment.percentage}%
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1356,85 +1571,113 @@ function App() {
                           </button>
                         </div>
 
-                        {/* Horizontal Scroll Carousel */}
-                        <div 
-                          className="category-carousel-row"
-                          style={{
-                            display: 'flex',
-                            gap: '1.25rem',
-                            overflowX: 'auto',
-                            paddingBottom: '0.75rem',
-                            scrollSnapType: 'x mandatory',
-                            WebkitOverflowScrolling: 'touch',
-                            scrollbarWidth: 'thin'
-                          }}
-                        >
-                          {catGroup.products.map((p) => (
-                            <div 
-                              className="product-card" 
-                              key={p._id}
-                              style={{
-                                minWidth: '240px',
-                                width: '240px',
-                                flexShrink: 0,
-                                margin: '0.25rem 0',
-                                scrollSnapAlign: 'start',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                height: '360px',
-                                justifyContent: 'space-between'
-                              }}
-                            >
-                              <div className="product-img-wrapper" style={{ height: '160px' }}>
-                                <span className="category-tag">{p.category}</span>
-                                <img
-                                  className="product-img"
-                                  src={p.imageUrl || getLoremFlickrUrl(p.name, p.category)}
-                                  alt={p.name}
-                                  loading="lazy"
-                                  onError={(e) => {
-                                    const t = e.currentTarget;
-                                    t.onerror = null;
-                                    t.src = getLoremFlickrUrl(p.name, p.category);
-                                  }}
-                                />
-                              </div>
-                              <div className="product-info" style={{ padding: '0.75rem', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                                <div>
-                                  <h4 className="product-name" style={{ fontSize: '0.82rem', marginBottom: '0.25rem', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }} title={p.name}>
-                                    {p.name}
-                                  </h4>
-                                  <p className="product-desc" style={{ fontSize: '0.72rem', height: '32px', marginBottom: '0.5rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                                    {p.description}
-                                  </p>
+                        {/* Horizontal Scroll Carousel Wrapper */}
+                        <div className="carousel-wrapper-container">
+                          {/* Scroll Left Button */}
+                          <button 
+                            className="carousel-scroll-btn left"
+                            onClick={() => {
+                              const row = document.getElementById(`carousel-${catGroup.category.replace(/\s+/g, '-')}`);
+                              if (row) row.scrollBy({ left: -320, behavior: 'smooth' });
+                            }}
+                            title="Scroll Left"
+                          >
+                            <ChevronLeft size={20} />
+                          </button>
+
+                          {/* Horizontal Scroll Carousel */}
+                          <div 
+                            id={`carousel-${catGroup.category.replace(/\s+/g, '-')}`}
+                            className="category-carousel-row"
+                            style={{
+                              display: 'flex',
+                              gap: '1.25rem',
+                              overflowX: 'auto',
+                              paddingBottom: '0.75rem',
+                              scrollSnapType: 'x mandatory',
+                              WebkitOverflowScrolling: 'touch',
+                              scrollbarWidth: 'thin'
+                            }}
+                          >
+                            {catGroup.products.map((p) => (
+                              <div 
+                                className="product-card" 
+                                key={p._id}
+                                style={{
+                                  minWidth: '240px',
+                                  width: '240px',
+                                  flexShrink: 0,
+                                  margin: '0.25rem 0',
+                                  scrollSnapAlign: 'start',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  height: '360px',
+                                  justifyContent: 'space-between'
+                                }}
+                              >
+                                <div className="product-img-wrapper" style={{ height: '160px' }}>
+                                  <span className="category-tag">{p.category}</span>
+                                  <img
+                                    className="product-img"
+                                    src={p.imageUrl || getLoremFlickrUrl(p.name, p.category)}
+                                    alt={p.name}
+                                    loading="lazy"
+                                    onError={(e) => {
+                                      const t = e.currentTarget;
+                                      t.onerror = null;
+                                      t.src = getLoremFlickrUrl(p.name, p.category);
+                                    }}
+                                  />
                                 </div>
-                                <div>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                    <span className={`product-stock ${p.stock < 50 ? 'low-stock' : ''}`}>
-                                      {p.stock === 0 ? 'Out of Stock' : `${p.stock} in stock`}
-                                    </span>
+                                <div className="product-info" style={{ padding: '0.75rem', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                                  <div>
+                                    <h4 className="product-name" style={{ fontSize: '0.82rem', marginBottom: '0.25rem', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }} title={p.name}>
+                                      {p.name}
+                                    </h4>
+                                    <p className="product-desc" style={{ fontSize: '0.72rem', height: '32px', marginBottom: '0.5rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                      {p.description}
+                                    </p>
                                   </div>
-                                  <div className="product-footer" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span className="product-price" style={{ fontSize: '0.85rem' }}>${p.price.toFixed(2)}</span>
-                                    <button
-                                      onClick={(e) => addToCart(p, e)}
-                                      disabled={p.stock === 0}
-                                      className="btn btn-primary"
-                                      style={{
-                                        padding: '0.25rem 0.6rem',
-                                        fontSize: '0.75rem',
-                                        background: p.stock === 0 ? 'var(--border-color)' : 'linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%)',
-                                        cursor: p.stock === 0 ? 'not-allowed' : 'pointer',
-                                        border: 'none',
-                                      }}
-                                    >
-                                      Add
-                                    </button>
+                                  <div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                      <span className={`product-stock ${p.stock < 50 ? 'low-stock' : ''}`}>
+                                        {p.stock === 0 ? 'Out of Stock' : `${p.stock} in stock`}
+                                      </span>
+                                    </div>
+                                    <div className="product-footer" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <span className="product-price" style={{ fontSize: '0.85rem' }}>${p.price.toFixed(2)}</span>
+                                      <button
+                                        onClick={(e) => addToCart(p, e)}
+                                        disabled={p.stock === 0}
+                                        className="btn btn-primary"
+                                        style={{
+                                          padding: '0.25rem 0.6rem',
+                                          fontSize: '0.75rem',
+                                          background: p.stock === 0 ? 'var(--border-color)' : 'linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%)',
+                                          cursor: p.stock === 0 ? 'not-allowed' : 'pointer',
+                                          border: 'none',
+                                        }}
+                                      >
+                                        Add
+                                      </button>
+                                    </div>
                                   </div>
                                 </div>
                               </div>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
+
+                          {/* Scroll Right Button */}
+                          <button 
+                            className="carousel-scroll-btn right"
+                            onClick={() => {
+                              const row = document.getElementById(`carousel-${catGroup.category.replace(/\s+/g, '-')}`);
+                              if (row) row.scrollBy({ left: 320, behavior: 'smooth' });
+                            }}
+                            title="Scroll Right"
+                          >
+                            <ChevronRight size={20} />
+                          </button>
                         </div>
                       </div>
                     ))}

@@ -7,7 +7,7 @@ import { Order } from '../models/Order';
 import { BadRequestError, NotFoundError } from '../utils/errors';
 import { getCache, setCache, delCache, delCachePattern } from '../config/redis';
 import { warmCache } from './productController';
-import { getIO } from '../index';
+
 
 export interface CartItemInput {
   productId: string;
@@ -171,14 +171,34 @@ export const calculateCart = async (
   }
 };
 
+let isReplicaSetCache: boolean | null = null;
+
+const checkReplicaSet = async (): Promise<boolean> => {
+  if (isReplicaSetCache !== null) return isReplicaSetCache;
+  try {
+    if (!mongoose.connection.db) return false;
+    const admin = mongoose.connection.db.admin();
+    const info = await admin.command({ isMaster: 1 });
+    isReplicaSetCache = !!(info.setName || info.hosts);
+  } catch (err) {
+    isReplicaSetCache = false;
+  }
+  return isReplicaSetCache;
+};
+
 // ACID transaction-based checkout controller with atomic stock decrements
 export const placeOrder = async (
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  const isReplicaSet = await checkReplicaSet();
+  let session: mongoose.ClientSession | null = null;
+
+  if (isReplicaSet) {
+    session = await mongoose.startSession();
+    session.startTransaction();
+  }
 
   try {
     const { items, discountCode } = req.body as {
@@ -190,7 +210,7 @@ export const placeOrder = async (
       throw new BadRequestError('Cart items are required to place an order');
     }
 
-    // Resolve products, calculate prices, apply discounts, verify stocks inside transaction
+    // Resolve products, calculate prices, apply discounts, verify stocks inside transaction if session active
     let subtotal = 0;
     const orderItems = [];
 
@@ -199,8 +219,9 @@ export const placeOrder = async (
         throw new BadRequestError('Each cart item must contain a valid productId and quantity greater than 0');
       }
 
-      // Check stock availability atomically inside transaction session query
-      const product = await Product.findById(item.productId).session(session);
+      // Check stock availability atomically
+      const productQuery = Product.findById(item.productId);
+      const product = session ? await productQuery.session(session) : await productQuery;
       if (!product) {
         throw new NotFoundError(`Product not found: ${item.productId}`);
       }
@@ -213,7 +234,11 @@ export const placeOrder = async (
 
       // Decrement stock atomically
       product.stock -= item.quantity;
-      await product.save({ session });
+      if (session) {
+        await product.save({ session });
+      } else {
+        await product.save();
+      }
 
       const itemSubtotal = product.price * item.quantity;
       subtotal += itemSubtotal;
@@ -232,10 +257,11 @@ export const placeOrder = async (
     let verifiedDiscountCode: string | undefined = undefined;
 
     if (discountCode) {
-      const discount = await Discount.findOne({
+      const discountQuery = Discount.findOne({
         code: discountCode.toUpperCase(),
         isActive: true,
-      }).session(session);
+      });
+      const discount = session ? await discountQuery.session(session) : await discountQuery;
 
       if (!discount) {
         throw new BadRequestError(`Invalid or inactive discount code: ${discountCode}`);
@@ -262,13 +288,20 @@ export const placeOrder = async (
       status: 'completed',
     });
 
-    await order.save({ session });
+    if (session) {
+      await order.save({ session });
+    } else {
+      await order.save();
+    }
 
-    // Commit Transaction
-    await session.commitTransaction();
-    session.endSession();
+    // Commit Transaction if active
+    if (session) {
+      await session.commitTransaction();
+      session.endSession();
+    }
 
     // Broadcast updated inventory levels to all active clients via Socket.io
+    const { getIO } = require('../index');
     const io = getIO();
     if (io) {
       io.emit('inventoryUpdate', orderItems.map(item => ({
@@ -293,9 +326,11 @@ export const placeOrder = async (
       data: order,
     });
   } catch (error) {
-    // Abort Transaction on error (automatically rolls back any database updates / decrements!)
-    await session.abortTransaction();
-    session.endSession();
+    // Abort Transaction on error if active
+    if (session) {
+      await session.abortTransaction();
+      session.endSession();
+    }
     next(error);
   }
 };

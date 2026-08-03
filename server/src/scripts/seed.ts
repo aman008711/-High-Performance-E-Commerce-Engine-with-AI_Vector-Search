@@ -359,8 +359,15 @@ const seedDatabase = async () => {
       }
       price = parseFloat(price.toFixed(2));
 
-      // Image Url - Use dynamic relevant loremflickr URLs
-      const imageUrl = getLoremFlickrUrl(rawName, category);
+      // Image Url - Parse real image URL from products.md, fallback to placeholder generator if missing
+      let imageUrl = '';
+      if (record.image_url) {
+        // Clean square brackets, quotes, whitespace, and take the first URL in any comma-separated sequence
+        const cleanUrl = record.image_url.replace(/[\[\]"\s]/g, '').split(',')[0];
+        imageUrl = cleanUrl || getLoremFlickrUrl(rawName, category);
+      } else {
+        imageUrl = getLoremFlickrUrl(rawName, category);
+      }
 
       // Specs
       const specs = parseSpecifications(record.product_specifications);

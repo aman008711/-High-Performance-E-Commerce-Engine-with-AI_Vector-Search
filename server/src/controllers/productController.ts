@@ -406,16 +406,16 @@ export const parseQueryUnderstanding = (searchQuery: string): ParsedQuery => {
     { keywords: ["monitor", "monitors", "display", "screen"], category: "Electronics", subcategory: "Monitors" },
     { keywords: ["webcam", "webcams"], category: "Electronics", subcategory: "Webcams" },
     { keywords: ["phone", "phones", "mobile", "mobiles", "smartphone", "smartphones"], category: "Mobiles" },
-    { keywords: ["laptop", "laptops", "notebook", "notebooks", "ultrabook"], category: "Laptops" },
+    { keywords: ["laptop", "laptops", "notebook", "notebooks", "ultrabook"], category: "Computers" },
     { keywords: ["watch", "watches", "smartwatch"], category: "Watches" },
-    { keywords: ["beauty", "cream", "shampoo", "perfume", "mist", "makeup", "cosmetics"], category: "Beauty" },
+    { keywords: ["beauty", "cream", "shampoo", "perfume", "mist", "makeup", "cosmetics"], category: "Beauty & Personal Care" },
     { keywords: ["blender", "kettle", "pan", "cookware", "pot", "toaster", "kitchen"], category: "Home & Kitchen" },
-    { keywords: ["coffee", "salt", "pepper", "tea", "grocery", "food", "snacks"], category: "Grocery" },
-    { keywords: ["yoga", "dumbbell", "tent", "racket", "sports", "camping"], category: "Sports" },
-    { keywords: ["book", "books", "novel", "novels", "biography", "memoir", "cookbook"], category: "Books" },
-    { keywords: ["toy", "toys", "lego", "drone", "blocks", "puzzle", "board game"], category: "Toys" },
+    { keywords: ["coffee", "salt", "pepper", "tea", "grocery", "food", "snacks"], category: "Food & Nutrition" },
+    { keywords: ["yoga", "dumbbell", "tent", "racket", "sports", "camping"], category: "Sports & Fitness" },
+    { keywords: ["book", "books", "novel", "novels", "biography", "memoir", "cookbook"], category: "Pens & Stationery" },
+    { keywords: ["toy", "toys", "lego", "drone", "blocks", "puzzle", "board game"], category: "Toys & Games" },
     { keywords: ["furniture", "chair", "table", "desk", "bookshelf"], category: "Furniture" },
-    { keywords: ["accessories", "sunglasses", "belt", "backpack", "beanie"], category: "Accessories" }
+    { keywords: ["accessories", "sunglasses", "belt", "backpack", "beanie"], category: "Bags, Wallets & Belts" }
   ];
 
   for (const map of mappings) {
@@ -442,10 +442,10 @@ export const parseQueryUnderstanding = (searchQuery: string): ParsedQuery => {
 
   // Adjust "cheap" value relative to parsed category
   if (parsed.maxPrice === 100 && parsed.category) {
-    if (parsed.category === "Laptops") parsed.maxPrice = 800;
+    if (parsed.category === "Computers") parsed.maxPrice = 800;
     else if (parsed.category === "Mobiles") parsed.maxPrice = 400;
-    else if (parsed.category === "Grocery") parsed.maxPrice = 15;
-    else if (parsed.category === "Books") parsed.maxPrice = 30;
+    else if (parsed.category === "Food & Nutrition") parsed.maxPrice = 15;
+    else if (parsed.category === "Pens & Stationery") parsed.maxPrice = 30;
   }
 
   return parsed;
@@ -593,8 +593,8 @@ export const searchProductsVector = async (
         );
       }
 
-      // Layer 3: Fall back to all products (broad semantic search) if category-only is empty or no category detected
-      if (candidates.length === 0) {
+      // Layer 3: Fall back to all products (broad semantic search) ONLY if NO specific category or subcategory was parsed
+      if (candidates.length === 0 && !parsedQuery.category && !parsedQuery.subcategory) {
         layerUsed = "Global Fallback Match";
         candidates = await Product.find(
           { vectorEmbedding: { $exists: true, $ne: null } },
@@ -604,7 +604,7 @@ export const searchProductsVector = async (
     }
 
     // 3. Hybrid Ranking Score Calculation
-    const scoredCandidates = candidates.map((product) => {
+    let scoredCandidates = candidates.map((product) => {
       const productEmbedding = product.vectorEmbedding || [];
       const vectorScore = isAtlasUsed && typeof product.score === 'number'
         ? product.score
@@ -656,6 +656,9 @@ export const searchProductsVector = async (
         score: parseFloat(Math.min(0.99, finalScore).toFixed(4)),
       };
     });
+
+    // Enforce a relevance threshold of 0.20 to filter out completely unrelated products
+    scoredCandidates = scoredCandidates.filter(c => c.score >= 0.20);
 
     // Sort candidates based on custom sorting parameters if specified
     if (sortBy === 'price') {

@@ -502,62 +502,118 @@ export const searchProductsVector = async (
 
     let candidates: any[] = [];
     let layerUsed = "Direct Metadata Match";
+    let isAtlasUsed = false;
 
-    // 2. Metadata Filtering Layers (Layered Fallback)
-    
-    // Layer 1: Strict match using parsed category, subcategory, brand, gender, and price range
-    const filterQuery: any = { vectorEmbedding: { $exists: true, $ne: null } };
-    if (parsedQuery.category) {
-      filterQuery.category = parsedQuery.category;
-    }
-    if (parsedQuery.subcategory) {
-      filterQuery.subcategory = parsedQuery.subcategory;
-    }
-    if (parsedQuery.brand) {
-      filterQuery.brand = parsedQuery.brand;
-    }
-    if (parsedQuery.gender) {
-      filterQuery.gender = parsedQuery.gender;
-    }
-    if (parsedQuery.color) {
-      filterQuery.color = parsedQuery.color;
-    }
-    if (parsedQuery.maxPrice || parsedQuery.minPrice) {
-      filterQuery.price = {};
-      if (parsedQuery.maxPrice) filterQuery.price.$lte = parsedQuery.maxPrice;
-      if (parsedQuery.minPrice) filterQuery.price.$gte = parsedQuery.minPrice;
-    }
+    // 2. Attempt MongoDB Atlas Vector Search
+    try {
+      const filter: any = {};
+      if (parsedQuery.category) filter.category = parsedQuery.category;
+      if (parsedQuery.brand) filter.brand = parsedQuery.brand;
+      if (parsedQuery.gender) filter.gender = parsedQuery.gender;
+      if (parsedQuery.color) filter.color = parsedQuery.color;
+      if (parsedQuery.maxPrice || parsedQuery.minPrice) {
+        filter.price = {};
+        if (parsedQuery.maxPrice) filter.price.$lte = parsedQuery.maxPrice;
+        if (parsedQuery.minPrice) filter.price.$gte = parsedQuery.minPrice;
+      }
 
-    candidates = await Product.find(
-      filterQuery,
-      { name: 1, description: 1, price: 1, stock: 1, category: 1, subcategory: 1, brand: 1, color: 1, gender: 1, material: 1, rating: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
-    );
+      const pipeline: any[] = [
+        {
+          $vectorSearch: {
+            index: "vector_index",
+            path: "vectorEmbedding",
+            queryVector: queryVector,
+            numCandidates: Math.max(100, limit * 5),
+            limit: limit * 2,
+            ...(Object.keys(filter).length > 0 ? { filter } : {})
+          }
+        },
+        {
+          $project: {
+            name: 1,
+            description: 1,
+            price: 1,
+            stock: 1,
+            category: 1,
+            subcategory: 1,
+            brand: 1,
+            color: 1,
+            gender: 1,
+            material: 1,
+            rating: 1,
+            tags: 1,
+            imageUrl: 1,
+            vectorEmbedding: 1,
+            score: { $meta: "vectorSearchScore" }
+          }
+        }
+      ];
 
-    // Layer 2: Fall back to category-only filter if strict match is empty
-    if (candidates.length === 0 && parsedQuery.category) {
-      layerUsed = "Category Fallback Match";
+      candidates = await Product.aggregate(pipeline);
+      isAtlasUsed = true;
+      layerUsed = "MongoDB Atlas Vector Search";
+    } catch (atlasError) {
+      // Gracefully fall back to local in-memory cosine ranking if Atlas Vector Search fails (e.g. on standalone MongoDB)
+      layerUsed = "Direct Metadata Match";
+
+      // Layer 1: Strict match using parsed category, subcategory, brand, gender, and price range
+      const filterQuery: any = { vectorEmbedding: { $exists: true, $ne: null } };
+      if (parsedQuery.category) {
+        filterQuery.category = parsedQuery.category;
+      }
+      if (parsedQuery.subcategory) {
+        filterQuery.subcategory = parsedQuery.subcategory;
+      }
+      if (parsedQuery.brand) {
+        filterQuery.brand = parsedQuery.brand;
+      }
+      if (parsedQuery.gender) {
+        filterQuery.gender = parsedQuery.gender;
+      }
+      if (parsedQuery.color) {
+        filterQuery.color = parsedQuery.color;
+      }
+      if (parsedQuery.maxPrice || parsedQuery.minPrice) {
+        filterQuery.price = {};
+        if (parsedQuery.maxPrice) filterQuery.price.$lte = parsedQuery.maxPrice;
+        if (parsedQuery.minPrice) filterQuery.price.$gte = parsedQuery.minPrice;
+      }
+
       candidates = await Product.find(
-        { category: parsedQuery.category, vectorEmbedding: { $exists: true, $ne: null } },
+        filterQuery,
         { name: 1, description: 1, price: 1, stock: 1, category: 1, subcategory: 1, brand: 1, color: 1, gender: 1, material: 1, rating: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
       );
-    }
 
-    // Layer 3: Fall back to all products (broad semantic search) if category-only is empty or no category detected
-    if (candidates.length === 0) {
-      layerUsed = "Global Fallback Match";
-      candidates = await Product.find(
-        { vectorEmbedding: { $exists: true, $ne: null } },
-        { name: 1, description: 1, price: 1, stock: 1, category: 1, subcategory: 1, brand: 1, color: 1, gender: 1, material: 1, rating: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
-      );
+      // Layer 2: Fall back to category-only filter if strict match is empty
+      if (candidates.length === 0 && parsedQuery.category) {
+        layerUsed = "Category Fallback Match";
+        candidates = await Product.find(
+          { category: parsedQuery.category, vectorEmbedding: { $exists: true, $ne: null } },
+          { name: 1, description: 1, price: 1, stock: 1, category: 1, subcategory: 1, brand: 1, color: 1, gender: 1, material: 1, rating: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
+        );
+      }
+
+      // Layer 3: Fall back to all products (broad semantic search) if category-only is empty or no category detected
+      if (candidates.length === 0) {
+        layerUsed = "Global Fallback Match";
+        candidates = await Product.find(
+          { vectorEmbedding: { $exists: true, $ne: null } },
+          { name: 1, description: 1, price: 1, stock: 1, category: 1, subcategory: 1, brand: 1, color: 1, gender: 1, material: 1, rating: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
+        );
+      }
     }
 
     // 3. Hybrid Ranking Score Calculation
     const scoredCandidates = candidates.map((product) => {
       const productEmbedding = product.vectorEmbedding || [];
-      const vectorScore = queryVector.reduce((sum, val, idx) => sum + val * (productEmbedding[idx] || 0), 0);
+      const vectorScore = isAtlasUsed && typeof product.score === 'number'
+        ? product.score
+        : queryVector.reduce((sum, val, idx) => sum + val * (productEmbedding[idx] || 0), 0);
+
+      const rawProduct = typeof product.toObject === 'function' ? product.toObject() : product;
 
       // Exact title matches boost
-      const prodNameLower = product.name.toLowerCase();
+      const prodNameLower = rawProduct.name.toLowerCase();
       const searchLower = search.toLowerCase();
       let titleScore = 0;
       if (prodNameLower === searchLower) {
@@ -570,16 +626,16 @@ export const searchProductsVector = async (
 
       // Category / Subcategory exact matches boost
       let categoryMatchScore = 0;
-      if (parsedQuery.category && product.category === parsedQuery.category) {
+      if (parsedQuery.category && rawProduct.category === parsedQuery.category) {
         categoryMatchScore += 0.6;
       }
-      if (parsedQuery.subcategory && product.subcategory === parsedQuery.subcategory) {
+      if (parsedQuery.subcategory && rawProduct.subcategory === parsedQuery.subcategory) {
         categoryMatchScore += 0.4;
       }
 
       // Keyword matches boost
       let matches = 0;
-      const textToMatch = `${product.name} ${product.description} ${product.subcategory || ''} ${product.brand || ''} ${product.color || ''} ${product.material || ''} ${product.tags.join(' ')}`.toLowerCase();
+      const textToMatch = `${rawProduct.name} ${rawProduct.description} ${rawProduct.subcategory || ''} ${rawProduct.brand || ''} ${rawProduct.color || ''} ${rawProduct.material || ''} ${rawProduct.tags.join(' ')}`.toLowerCase();
       for (const word of queryWords) {
         const wordStem = word.endsWith('s') && word.length > 3 ? word.slice(0, -1) : word;
         if (textToMatch.includes(word) || textToMatch.includes(wordStem)) {
@@ -589,14 +645,14 @@ export const searchProductsVector = async (
       const keywordScore = queryWords.length > 0 ? (matches / queryWords.length) : 0.0;
 
       // Rating/Popularity component
-      const ratingScore = (product.rating || 4.0) / 5.0;
+      const ratingScore = (rawProduct.rating || 4.0) / 5.0;
 
       // Combined Hybrid Search Ranking formula
       // Weights: 40% Title, 25% Category Match, 15% Keywords, 15% Vector Similarity, 5% Rating
       const finalScore = (titleScore * 0.40) + (categoryMatchScore * 0.25) + (keywordScore * 0.15) + (vectorScore * 0.15) + (ratingScore * 0.05);
 
       return {
-        ...product.toObject(),
+        ...rawProduct,
         score: parseFloat(Math.min(0.99, finalScore).toFixed(4)),
       };
     });

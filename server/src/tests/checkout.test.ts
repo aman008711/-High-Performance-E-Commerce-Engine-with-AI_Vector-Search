@@ -1,3 +1,4 @@
+import './setup';
 import mongoose from 'mongoose';
 import { connectDB } from '../config/db';
 import { Product } from '../models/Product';

@@ -124,5 +124,7 @@ process.on('uncaughtException', (err: Error) => {
   process.exit(1);
 });
 
-startServer();
+if (require.main === module) {
+  startServer();
+}
 

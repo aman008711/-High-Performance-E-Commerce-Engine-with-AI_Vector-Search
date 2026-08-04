@@ -60,10 +60,6 @@ jobs:
           cache: 'npm'
           cache-dependency-path: client/package-lock.json
 
-      - name: Install root workspace dependencies
-        working-directory: .
-        run: npm ci --legacy-peer-deps
-
       - name: Install client dependencies
         run: npm ci --legacy-peer-deps
 

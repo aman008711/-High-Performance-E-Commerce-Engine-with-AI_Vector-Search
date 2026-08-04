@@ -90,7 +90,7 @@ jobs:
       MONGO_URI: mongodb://localhost:27017/ecommerce_test
       PORT: 5000
       JWT_SECRET: ci-test-secret
-      REDIS_URL: ''
+      REDIS_URL: redis://localhost:6379
 
     defaults:
       run:

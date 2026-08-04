@@ -62,10 +62,10 @@ jobs:
 
       - name: Install root workspace dependencies
         working-directory: .
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Install client dependencies
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: TypeScript typecheck + Vite build
         run: npm run build

@@ -148,6 +148,34 @@ export const api = {
     }>(`/products/search/vector${queryString}`);
   },
 
+  searchProductsImage: (base64Image: string, category?: string, params: ProductQuery = {}) => {
+    const query = new URLSearchParams();
+    if (params.page) query.append('page', params.page.toString());
+    if (params.limit) query.append('limit', params.limit.toString());
+    if (params.sortBy) query.append('sortBy', params.sortBy);
+    if (params.sortOrder) query.append('sortOrder', params.sortOrder);
+
+    const queryString = query.toString() ? `?${query.toString()}` : '';
+    return request<{ 
+      products: ApiProduct[]; 
+      total: number; 
+      pages: number;
+      prediction: {
+        label: string;
+        score: number;
+        allPredictions: Array<{ label: string; score: number }>;
+      };
+      telemetry?: {
+        parsedQuery: any;
+        latencyMs: number;
+        layerUsed: string;
+      }
+    }>(`/products/search/image${queryString}`, {
+      method: 'POST',
+      body: JSON.stringify({ image: base64Image, category }),
+    });
+  },
+
   getProduct: (id: string) => {
     return request<ApiProduct>(`/products/${id}`);
   },
@@ -208,5 +236,29 @@ export const api = {
   getCategoryWiseProducts: () => {
     return request<Array<{ category: string; count: number; products: ApiProduct[] }>>('/products/category-wise');
   },
+
+  getSearchAnalytics: () => {
+    return request<SearchAnalyticsResponse>('/analytics/search-stats');
+  },
+
+  clearSearchLogs: () => {
+    return request<{ success: boolean; message: string }>('/analytics/search-stats', {
+      method: 'DELETE',
+    });
+  },
 };
+
+export interface SearchAnalyticsResponse {
+  totalSearches: number;
+  unansweredCount: number;
+  typeDistribution: {
+    text: number;
+    vector: number;
+    image: number;
+  };
+  topQueries: Array<{ query: string; type: string; count: number }>;
+  unansweredQueries: Array<{ query: string; count: number; lastSearched: string }>;
+  trends: Array<{ date: string; count: number }>;
+}
+
 

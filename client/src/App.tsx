@@ -1,20 +1,22 @@
 import { useState, useEffect, ChangeEvent } from 'react';
 import { io } from 'socket.io-client';
-import { api, ApiProduct } from './services/api';
-import { 
-  Activity, 
-  Layers, 
-  Database, 
-  Terminal, 
-  Cpu, 
-  RefreshCw, 
-  Search, 
+import { api, ApiProduct, SearchAnalyticsResponse } from './services/api';
+import {
+  Activity,
+  Layers,
+  Database,
+  Terminal,
+  Cpu,
+  RefreshCw,
+  Search,
   SlidersHorizontal,
   ChevronLeft,
   ChevronRight,
   Edit,
   Trash2,
-  ShoppingCart
+  ShoppingCart,
+  Camera,
+  X
 } from 'lucide-react';
 const getLogTagClass = (status: string): string => {
   const s = status.toLowerCase();
@@ -44,12 +46,12 @@ const CATEGORIES = [
 
 // Typo Tolerance Dictionary words
 const DICTIONARY_WORDS = [
-  "t-shirt", "shirt", "jeans", "jacket", "hoodie", "dress", "top", "skirt", 
-  "sweater", "shoes", "sneakers", "boots", "loafers", "headphones", "keyboard", 
-  "speaker", "monitor", "webcam", "phone", "mobile", "smartphone", "laptop", 
-  "watch", "beauty", "cream", "shampoo", "perfume", "blender", "kettle", "pan", 
-  "cookware", "coffee", "salt", "pepper", "tea", "yoga", "dumbbell", "tent", 
-  "book", "toy", "lego", "drone", "furniture", "chair", "table", "desk", 
+  "t-shirt", "shirt", "jeans", "jacket", "hoodie", "dress", "top", "skirt",
+  "sweater", "shoes", "sneakers", "boots", "loafers", "headphones", "keyboard",
+  "speaker", "monitor", "webcam", "phone", "mobile", "smartphone", "laptop",
+  "watch", "beauty", "cream", "shampoo", "perfume", "blender", "kettle", "pan",
+  "cookware", "coffee", "salt", "pepper", "tea", "yoga", "dumbbell", "tent",
+  "book", "toy", "lego", "drone", "furniture", "chair", "table", "desk",
   "sunglasses", "belt", "backpack", "beanie"
 ];
 
@@ -82,10 +84,10 @@ const getTypoSuggestion = (searchStr: string): string | null => {
   let suggestionsMade = false;
   const correctedWords = words.map(w => {
     if (DICTIONARY_WORDS.includes(w) || w.length < 4) return w;
-    
+
     let bestWord: string | null = null;
     let bestDistance = 999;
-    
+
     for (const dictWord of DICTIONARY_WORDS) {
       const distance = getLevenshteinDistance(w, dictWord);
       const maxAllowed = w.length > 6 ? 2 : 1;
@@ -94,7 +96,7 @@ const getTypoSuggestion = (searchStr: string): string | null => {
         bestWord = dictWord;
       }
     }
-    
+
     if (bestWord) {
       suggestionsMade = true;
       return bestWord;
@@ -120,7 +122,7 @@ const highlightKeywords = (text: string, searchStr: string): React.ReactNode => 
 
   return (
     <>
-      {parts.map((part, index) => 
+      {parts.map((part, index) =>
         regex.test(part) ? (
           <mark key={index} style={{ backgroundColor: 'rgba(139, 92, 246, 0.22)', color: 'var(--primary)', padding: '0 2px', borderRadius: '2px', fontWeight: 600 }}>
             {part}
@@ -136,7 +138,7 @@ const highlightKeywords = (text: string, searchStr: string): React.ReactNode => 
 const getLoremFlickrUrl = (name: string, category: string, width = 500, height = 400): string => {
   const cat = (category || '').toLowerCase();
   const title = (name || '').toLowerCase();
-  
+
   let keyword = 'product';
   if (cat.includes('shoe')) keyword = 'shoes';
   else if (cat.includes('phone') || cat.includes('mobile')) keyword = 'smartphone,phone';
@@ -165,14 +167,14 @@ const getLoremFlickrUrl = (name: string, category: string, width = 500, height =
   else if (cat.includes('toy') || cat.includes('lego')) keyword = 'toys';
   else if (cat.includes('grocery') || cat.includes('food') || cat.includes('coffee')) keyword = 'coffee,grocery';
   else if (cat.includes('furniture') || cat.includes('chair')) keyword = 'furniture';
-  
+
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
     hash = (hash << 5) - hash + name.charCodeAt(i);
     hash |= 0;
   }
   const lock = Math.abs(hash) % 1000;
-  
+
   return `https://loremflickr.com/${width}/${height}/${keyword}?lock=${lock}`;
 };
 
@@ -216,11 +218,18 @@ function App() {
   const [sortOrder, setSortOrder] = useState<string>('desc');
   const [searchTelemetry, setSearchTelemetry] = useState<any>(null);
 
+  // AI Image Search States
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isImageSearching, setIsImageSearching] = useState<boolean>(false);
+  const [imagePrediction, setImagePrediction] = useState<{ label: string; score: number } | null>(null);
+
   const [categoryWiseProducts, setCategoryWiseProducts] = useState<Array<{ category: string; count: number; products: ApiProduct[] }>>([]);
   const [categoryWiseLoading, setCategoryWiseLoading] = useState<boolean>(false);
   const [isCategoryWiseMode, setIsCategoryWiseMode] = useState<boolean>(false);
   const [dynamicCategories, setDynamicCategories] = useState<string[]>(CATEGORIES);
 
+  const [searchAnalytics, setSearchAnalytics] = useState<SearchAnalyticsResponse | null>(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState<boolean>(false);
 
   const [avgLatency, setAvgLatency] = useState<number>(12.4);
   const [cacheHitRate, setCacheHitRate] = useState<number>(94.8);
@@ -276,7 +285,7 @@ function App() {
       try {
         const lastCartItem = cart[cart.length - 1];
         const response = await api.getProductRecommendations(lastCartItem.product._id);
-        
+
         // Exclude items already in the cart
         const cartIds = cart.map(item => item.product._id);
         const filteredRecs = (response.data || []).filter((p: ApiProduct) => !cartIds.includes(p._id));
@@ -391,9 +400,9 @@ function App() {
       const existing = prev.find(item => item.product._id === product._id);
       if (existing) {
         if (existing.quantity >= product.stock) return prev;
-        return prev.map(item => 
-          item.product._id === product._id 
-            ? { ...item, quantity: item.quantity + 1 } 
+        return prev.map(item =>
+          item.product._id === product._id
+            ? { ...item, quantity: item.quantity + 1 }
             : item
         );
       }
@@ -427,15 +436,15 @@ function App() {
     setCalculating(true);
     setCouponError('');
     setCouponSuccess('');
-    
+
     try {
       const itemsPayload = cart.map(item => ({
         productId: item.product._id,
         quantity: item.quantity
       }));
-      
+
       const response = await api.calculateCart(itemsPayload, couponInput);
-      
+
       // Update totals
       setTotals({
         subtotal: response.data.subtotal,
@@ -477,7 +486,7 @@ function App() {
       }));
 
       const response = await api.placeOrder(itemsPayload, couponInput || undefined);
-      
+
       // Update telemetry
       const newLog = {
         method: 'POST',
@@ -488,15 +497,15 @@ function App() {
       };
       setLogs(prev => [newLog, ...prev.slice(0, 19)]);
       setAvgLatency(prev => parseFloat(((prev * 0.9) + (response.latency * 0.1)).toFixed(1)));
-      
+
       alert(`Order Placed Successfully! Order ID: ${response.data._id}`);
-      
+
       setCart([]);
       setTotals({ subtotal: 0, discountPercent: 0, discountApplied: 0, total: 0 });
       setCouponInput('');
       setCouponSuccess('');
       setIsCartOpen(false);
-      
+
       // Re-fetch products to show updated stock level values on the catalog UI page!
       await fetchProducts();
     } catch (err: any) {
@@ -523,7 +532,7 @@ function App() {
     e.preventDefault();
     if (!editingProduct) return;
     setSubmitting(true);
-    
+
     const parsedPrice = parseFloat(formPrice) || 0;
     const parsedStock = parseInt(formStock) || 0;
     const parsedTags = formTags.split(',').map(t => t.trim()).filter(Boolean);
@@ -544,7 +553,7 @@ function App() {
       } else {
         await api.createProduct(payload);
       }
-      
+
       // Close drawer & trigger immediate fetch (invalidates server cache)
       setEditingProduct(null);
       await fetchProducts();
@@ -598,6 +607,38 @@ function App() {
     return () => clearInterval(intervalId);
   }, []);
 
+  const fetchSearchAnalytics = async () => {
+    setLoadingAnalytics(true);
+    try {
+      const response = await api.getSearchAnalytics();
+      if (response.data) {
+        setSearchAnalytics(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch search analytics:', err);
+    } finally {
+      setLoadingAnalytics(false);
+    }
+  };
+
+  const handleClearSearchLogs = async () => {
+    if (!window.confirm('Are you sure you want to clear all search logs? This cannot be undone.')) {
+      return;
+    }
+    try {
+      await api.clearSearchLogs();
+      fetchSearchAnalytics();
+    } catch (err: any) {
+      alert(err.message || 'Failed to clear search logs');
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'dashboard') {
+      fetchSearchAnalytics();
+    }
+  }, [activeTab]);
+
   // Search input debouncer effect (waits 300ms of typing silence before querying)
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -608,12 +649,23 @@ function App() {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
+
+
   // Fetch products from backend with client-side fallback if route is not implemented yet
   const fetchProducts = async () => {
     setLoading(true);
     try {
-      const fetchPromise = debouncedSearchTerm
-        ? api.searchProductsVector({
+      let fetchPromise;
+      if (imagePreview) {
+        fetchPromise = api.searchProductsImage(imagePreview, selectedCategory || undefined, {
+          page: currentPage,
+          limit: 12,
+          sortBy,
+          sortOrder
+        });
+      } else {
+        fetchPromise = debouncedSearchTerm
+          ? api.searchProductsVector({
             page: currentPage,
             limit: 12,
             category: selectedCategory || undefined,
@@ -621,7 +673,7 @@ function App() {
             sortBy,
             sortOrder
           })
-        : api.getProducts({
+          : api.getProducts({
             page: currentPage,
             limit: 12,
             category: selectedCategory || undefined,
@@ -629,26 +681,36 @@ function App() {
             sortBy,
             sortOrder
           });
+      }
 
       const response = await fetchPromise;
 
-      setProducts(response.data.products);
-      setTotalProducts(response.data.total);
-      setTotalPages(response.data.pages);
-      if (response.data && 'telemetry' in response.data) {
-        setSearchTelemetry(response.data.telemetry);
+      if (imagePreview && response.data && 'prediction' in response.data) {
+        const payloadData = response.data as any;
+        setProducts(payloadData.products);
+        setTotalProducts(payloadData.total);
+        setTotalPages(payloadData.pages);
+        setSearchTelemetry(payloadData.telemetry);
+        setImagePrediction(payloadData.prediction);
       } else {
-        setSearchTelemetry(null);
+        setProducts(response.data.products);
+        setTotalProducts(response.data.total);
+        setTotalPages(response.data.pages);
+        if (response.data && 'telemetry' in response.data) {
+          setSearchTelemetry((response.data as any).telemetry);
+        } else {
+          setSearchTelemetry(null);
+        }
       }
 
-      const basePath = debouncedSearchTerm ? '/api/products/search/vector' : '/api/products';
-      const pathStr = `${basePath}?page=${currentPage}&limit=12` + 
-                      (selectedCategory ? `&category=${selectedCategory}` : '') +
-                      (debouncedSearchTerm ? `&search=${encodeURIComponent(debouncedSearchTerm)}` : '') +
-                      `&sortBy=${sortBy}&sortOrder=${sortOrder}`;
-                      
+      const basePath = imagePreview ? '/api/products/search/image' : (debouncedSearchTerm ? '/api/products/search/vector' : '/api/products');
+      const pathStr = `${basePath}?page=${currentPage}&limit=12` +
+        (selectedCategory ? `&category=${selectedCategory}` : '') +
+        (debouncedSearchTerm && !imagePreview ? `&search=${encodeURIComponent(debouncedSearchTerm)}` : '') +
+        `&sortBy=${sortBy}&sortOrder=${sortOrder}`;
+
       const newLog = {
-        method: 'GET',
+        method: imagePreview ? 'POST' : 'GET',
         path: pathStr,
         status: response.cacheStatus,
         latency: `${response.latency}ms`,
@@ -657,17 +719,25 @@ function App() {
 
       setLogs(prev => [newLog, ...prev.slice(0, 19)]);
       setAvgLatency(prev => parseFloat(((prev * 0.9) + (response.latency * 0.1)).toFixed(1)));
-      
+
       if (response.cacheStatus === 'HIT') {
-         setCacheHitRate(prev => parseFloat(((prev * 0.95) + 5).toFixed(1)));
+        setCacheHitRate(prev => parseFloat(((prev * 0.95) + 5).toFixed(1)));
       } else if (response.cacheStatus === 'MISS') {
         setCacheHitRate(prev => parseFloat(((prev * 0.95)).toFixed(1)));
       }
 
     } catch (error) {
+      if (imagePreview) {
+        alert("Image search is currently unavailable. Please check that the server is running and the model is downloaded.");
+        setImagePreview(null);
+        setImagePrediction(null);
+        setLoading(false);
+        return;
+      }
+
       // Endpoint is 404 (Route not built on server until Day 10). Perform local client-side data mirroring.
       const fallbackData = getMockProducts(debouncedSearchTerm, selectedCategory, currentPage, sortBy, sortOrder);
-      
+
       // Inject standard latency delay (600ms) to demonstrate loading skeletons
       await new Promise(resolve => setTimeout(resolve, 600));
 
@@ -675,10 +745,10 @@ function App() {
       setTotalProducts(fallbackData.total);
       setTotalPages(fallbackData.pages);
 
-      const pathStr = `/api/products?page=${currentPage}&limit=12` + 
-                      (selectedCategory ? `&category=${selectedCategory}` : '') +
-                      (debouncedSearchTerm ? `&search=${encodeURIComponent(debouncedSearchTerm)}` : '') +
-                      `&sortBy=${sortBy}&sortOrder=${sortOrder}`;
+      const pathStr = `/api/products?page=${currentPage}&limit=12` +
+        (selectedCategory ? `&category=${selectedCategory}` : '') +
+        (debouncedSearchTerm ? `&search=${encodeURIComponent(debouncedSearchTerm)}` : '') +
+        `&sortBy=${sortBy}&sortOrder=${sortOrder}`;
 
       const simulatedLatency = Math.floor(Math.random() * 45) + 65; // Simulated DB round trip: 65-110ms
       const newLog = {
@@ -718,7 +788,7 @@ function App() {
 
       setLogs(prev => [newLog, ...prev.slice(0, 19)]);
       setAvgLatency(prev => parseFloat(((prev * 0.9) + (response.latency * 0.1)).toFixed(1)));
-      
+
       if (response.cacheStatus === 'HIT') {
         setCacheHitRate(prev => parseFloat(((prev * 0.95) + 5).toFixed(1)));
       } else if (response.cacheStatus === 'MISS') {
@@ -736,14 +806,41 @@ function App() {
     fetchCategoryWiseProducts();
   }, []);
 
-  // Re-run search whenever page, category, search mode, debounced keyword, or sorting updates
+  // Re-run search whenever page, category, search mode, debounced keyword, image, or sorting updates
   useEffect(() => {
     fetchProducts();
-  }, [currentPage, selectedCategory, debouncedSearchTerm, isVectorSearch, sortBy, sortOrder]);
+  }, [currentPage, selectedCategory, debouncedSearchTerm, isVectorSearch, sortBy, sortOrder, imagePreview]);
 
 
   const handleSearch = (e: ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
+  };
+
+  const handleImageSearchUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImageSearching(true);
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      setImagePreview(base64String);
+      setIsImageSearching(false);
+      setSearchTerm(''); // Clear text search when uploading image
+      setCurrentPage(1);
+    };
+    reader.onerror = () => {
+      alert("Failed to read image file.");
+      setIsImageSearching(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearImageSearch = () => {
+    setImagePreview(null);
+    setImagePrediction(null);
+    setSearchTerm('');
+    setCurrentPage(1);
   };
 
   const handleSortChange = (e: ChangeEvent<HTMLSelectElement>) => {
@@ -821,8 +918,8 @@ function App() {
     }
     if (search) {
       const queryStr = search.toLowerCase();
-      items = items.filter(item => 
-        item.name.toLowerCase().includes(queryStr) || 
+      items = items.filter(item =>
+        item.name.toLowerCase().includes(queryStr) ||
         item.description.toLowerCase().includes(queryStr)
       );
     }
@@ -918,28 +1015,28 @@ function App() {
           </div>
 
           <ul className="nav-links">
-            <li 
+            <li
               className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
               onClick={() => setActiveTab('dashboard')}
             >
               <Activity size={18} />
               Dashboard
             </li>
-            <li 
+            <li
               className={`nav-item ${activeTab === 'catalog' ? 'active' : ''}`}
               onClick={() => { setActiveTab('catalog'); setCurrentPage(1); }}
             >
               <Layers size={18} />
               Product Catalog
             </li>
-            <li 
+            <li
               className={`nav-item ${activeTab === 'admin' ? 'active' : ''}`}
               onClick={() => { setActiveTab('admin'); setCurrentPage(1); }}
             >
               <SlidersHorizontal size={18} />
               Admin Portal
             </li>
-            <li 
+            <li
               className={`nav-item ${activeTab === 'logs' ? 'active' : ''}`}
               onClick={() => setActiveTab('logs')}
             >
@@ -952,7 +1049,7 @@ function App() {
         {/* System Connection Status Panel */}
         <div className="connection-status-panel">
           <h4 className="panel-title">System Status</h4>
-          
+
           <div className="status-row">
             <span className="status-label">API Server</span>
             <span className="status-indicator">
@@ -1027,7 +1124,7 @@ function App() {
               <span className="telemetry-val" style={{ color: 'var(--primary-light)' }}>{cacheHitRate}%</span>
               <span className="telemetry-lbl">Cache Hit Ratio</span>
             </div>
-            <button 
+            <button
               onClick={() => setIsCartOpen(true)}
               style={{
                 backgroundColor: 'var(--bg-card)',
@@ -1047,7 +1144,7 @@ function App() {
               <ShoppingCart size={15} color="var(--primary-light)" />
               <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Cart</span>
               {cart.length > 0 && (
-                <span 
+                <span
                   style={{
                     position: 'absolute',
                     top: '-6px',
@@ -1101,7 +1198,7 @@ function App() {
                     Visualizing speed improvements of Cache-Aside patterns
                   </span>
                 </div>
-                
+
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '0.5rem' }}>
                   {/* Cache Hit Row */}
                   <div>
@@ -1191,22 +1288,22 @@ function App() {
                     }}>
                       {hoveredSlice !== null ? (
                         <>
-                          <span style={{ 
-                            fontSize: '0.72rem', 
-                            color: 'var(--text-muted)', 
-                            fontWeight: 600, 
-                            textTransform: 'uppercase', 
-                            whiteSpace: 'nowrap', 
-                            overflow: 'hidden', 
-                            textOverflow: 'ellipsis', 
-                            width: '90px' 
+                          <span style={{
+                            fontSize: '0.72rem',
+                            color: 'var(--text-muted)',
+                            fontWeight: 600,
+                            textTransform: 'uppercase',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            width: '90px'
                           }} title={chartSegments[hoveredSlice].category}>
                             {chartSegments[hoveredSlice].category}
                           </span>
-                          <span style={{ 
-                            fontSize: '1.05rem', 
-                            fontWeight: 800, 
-                            color: chartSegments[hoveredSlice].color, 
+                          <span style={{
+                            fontSize: '1.05rem',
+                            fontWeight: 800,
+                            color: chartSegments[hoveredSlice].color,
                             marginTop: '2px',
                             textShadow: `0 0 6px ${chartSegments[hoveredSlice].color}44`
                           }}>
@@ -1297,11 +1394,288 @@ function App() {
                 </div>
               </div>
 
+              {/* AI Search Analytics & Trends Panel */}
+              <div className="section-panel" style={{ marginBottom: '2rem' }}>
+                <div className="panel-header-section">
+                  <div>
+                    <h3>AI Search Analytics & Trends</h3>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      Analyzing search behaviors, query modes, and market gaps
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      onClick={fetchSearchAnalytics}
+                      disabled={loadingAnalytics}
+                      style={{
+                        background: 'none',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 'var(--radius-sm)',
+                        padding: '0.4rem 0.8rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        fontSize: '0.8rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <RefreshCw size={12} className={loadingAnalytics ? 'spin-anim' : ''} />
+                      Refresh
+                    </button>
+                    {authToken && (
+                      <button
+                        onClick={handleClearSearchLogs}
+                        style={{
+                          backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                          border: '1px solid var(--danger)',
+                          color: 'var(--danger)',
+                          borderRadius: 'var(--radius-sm)',
+                          padding: '0.4rem 0.8rem',
+                          fontSize: '0.8rem',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Clear Logs
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {searchAnalytics ? (
+                  <>
+                    {/* Key Stats Cards */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginTop: '1.25rem' }}>
+                      <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Total AI Searches</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: '0.25rem', color: 'var(--primary-light)' }}>
+                          {searchAnalytics.totalSearches.toLocaleString()}
+                        </div>
+                      </div>
+                      <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Unanswered Queries (0 Results)</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: '0.25rem', color: 'var(--danger)' }}>
+                          {searchAnalytics.unansweredCount.toLocaleString()}
+                        </div>
+                      </div>
+                      <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Search Success Rate</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: '0.25rem', color: 'var(--success)' }}>
+                          {searchAnalytics.totalSearches > 0
+                            ? `${(((searchAnalytics.totalSearches - searchAnalytics.unansweredCount) / searchAnalytics.totalSearches) * 100).toFixed(1)}%`
+                            : '100%'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Search Type Proportions */}
+                    <div style={{ marginTop: '1.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                        <span>Search Type Distribution</span>
+                        <span>
+                          Text: {searchAnalytics.typeDistribution.text} |
+                          Semantic: {searchAnalytics.typeDistribution.vector} |
+                          Visual: {searchAnalytics.typeDistribution.image}
+                        </span>
+                      </div>
+                      <div className="distribution-bar">
+                        {(() => {
+                          const total = searchAnalytics.totalSearches || 1;
+                          const textPct = (searchAnalytics.typeDistribution.text / total) * 100;
+                          const vectorPct = (searchAnalytics.typeDistribution.vector / total) * 100;
+                          const imagePct = (searchAnalytics.typeDistribution.image / total) * 100;
+                          return (
+                            <>
+                              <div className="distribution-segment text" style={{ width: `${textPct}%` }} title={`Text: ${textPct.toFixed(1)}%`} />
+                              <div className="distribution-segment vector" style={{ width: `${vectorPct}%` }} title={`Semantic/Vector: ${vectorPct.toFixed(1)}%`} />
+                              <div className="distribution-segment image" style={{ width: `${imagePct}%` }} title={`Visual/Image: ${imagePct.toFixed(1)}%`} />
+                            </>
+                          );
+                        })()}
+                      </div>
+                      <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.8rem' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#6366f1' }} />
+                          Keyword/Text Search
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981' }} />
+                          AI Semantic Search
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#f59e0b' }} />
+                          AI Visual Search
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Trend Line/Bar Chart (SVG) */}
+                    <div className="trends-chart-wrapper">
+                      <div style={{ marginBottom: '1rem', fontSize: '0.9rem', fontWeight: 600 }}>14-Day Search Volume Trend</div>
+                      {searchAnalytics.trends.length === 0 ? (
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '2rem 0' }}>No trend data available</div>
+                      ) : (
+                        (() => {
+                          const maxVal = Math.max(...searchAnalytics.trends.map(t => t.count), 1);
+                          const chartHeight = 120;
+                          const chartWidth = 700;
+                          const paddingX = 40;
+                          const paddingY = 20;
+
+                          // Generate coordinates for the polyline
+                          const points = searchAnalytics.trends.map((item, idx) => {
+                            const x = paddingX + (idx / (searchAnalytics.trends.length - 1)) * (chartWidth - paddingX * 2);
+                            const y = chartHeight - paddingY - (item.count / maxVal) * (chartHeight - paddingY * 2);
+                            return `${x},${y}`;
+                          }).join(' ');
+
+                          return (
+                            <div style={{ width: '100%', overflowX: 'auto' }}>
+                              <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} style={{ width: '100%', minWidth: '600px', height: '140px', overflow: 'visible' }}>
+                                {/* Horizontal grid lines */}
+                                {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
+                                  const y = chartHeight - paddingY - ratio * (chartHeight - paddingY * 2);
+                                  const val = Math.round(ratio * maxVal);
+                                  return (
+                                    <g key={i} opacity="0.15">
+                                      <line x1={paddingX} y1={y} x2={chartWidth - paddingX} y2={y} stroke="var(--text-muted)" strokeWidth="1" strokeDasharray="4,4" />
+                                      <text x={paddingX - 10} y={y + 4} textAnchor="end" fontSize="9" fill="var(--text-muted)">{val}</text>
+                                    </g>
+                                  );
+                                })}
+
+                                {/* Line path */}
+                                <polyline
+                                  fill="none"
+                                  stroke="var(--primary-light)"
+                                  strokeWidth="2.5"
+                                  points={points}
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+
+                                {/* Interactive Data Points */}
+                                {searchAnalytics.trends.map((item, idx) => {
+                                  const x = paddingX + (idx / (searchAnalytics.trends.length - 1)) * (chartWidth - paddingX * 2);
+                                  const y = chartHeight - paddingY - (item.count / maxVal) * (chartHeight - paddingY * 2);
+                                  // Short date like "08-05"
+                                  const dateLabel = item.date.substring(5);
+                                  return (
+                                    <g key={idx}>
+                                      <circle
+                                        cx={x}
+                                        cy={y}
+                                        r="4"
+                                        fill="var(--primary)"
+                                        stroke="#fff"
+                                        strokeWidth="1.5"
+                                        style={{ cursor: 'pointer' }}
+                                      />
+                                      <text
+                                        x={x}
+                                        y={chartHeight - 4}
+                                        textAnchor="middle"
+                                        fontSize="9"
+                                        fill="var(--text-muted)"
+                                        fontWeight="500"
+                                      >
+                                        {idx % 2 === 0 ? dateLabel : ''}
+                                      </text>
+                                      <title>{`${item.date}: ${item.count} searches`}</title>
+                                    </g>
+                                  );
+                                })}
+                              </svg>
+                            </div>
+                          );
+                        })()
+                      )}
+                    </div>
+
+                    {/* Two Column Grid for Top Searches & Unanswered Queries */}
+                    <div className="analytics-subgrid">
+                      {/* Top Searched Queries */}
+                      <div className="analytics-table-container">
+                        <h4 style={{ marginBottom: '1rem', fontSize: '0.95rem', display: 'flex', justifyContent: 'space-between' }}>
+                          <span>🔥 Top Search Queries</span>
+                        </h4>
+                        {searchAnalytics.topQueries.length === 0 ? (
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', padding: '1rem 0' }}>No search queries recorded yet.</div>
+                        ) : (
+                          <table className="analytics-table">
+                            <thead>
+                              <tr>
+                                <th>Query</th>
+                                <th>Type</th>
+                                <th style={{ textAlign: 'right' }}>Volume</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {searchAnalytics.topQueries.map((item, idx) => (
+                                <tr key={idx}>
+                                  <td style={{ fontWeight: 600 }}>"{item.query}"</td>
+                                  <td>
+                                    <span className={`tag-searchtype ${item.type}`}>
+                                      {item.type}
+                                    </span>
+                                  </td>
+                                  <td style={{ textAlign: 'right' }}>
+                                    <span className="badge-count">{item.count}</span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+
+                      {/* Unanswered / Zero-Result Queries */}
+                      <div className="analytics-table-container">
+                        <h4 style={{ marginBottom: '1rem', fontSize: '0.95rem', color: 'var(--danger)', display: 'flex', justifyContent: 'space-between' }}>
+                          <span>⚠️ Unanswered Queries (0 Results)</span>
+                        </h4>
+                        {searchAnalytics.unansweredQueries.length === 0 ? (
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', padding: '1rem 0' }}>No unanswered queries! Excellent inventory coverage.</div>
+                        ) : (
+                          <table className="analytics-table">
+                            <thead>
+                              <tr>
+                                <th>Query</th>
+                                <th>Last Searched</th>
+                                <th style={{ textAlign: 'right' }}>Count</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {searchAnalytics.unansweredQueries.map((item, idx) => {
+                                const dateObj = new Date(item.lastSearched);
+                                const formattedDate = `${dateObj.getMonth() + 1}/${dateObj.getDate()} ${dateObj.getHours().toString().padStart(2, '0')}:${dateObj.getMinutes().toString().padStart(2, '0')}`;
+                                return (
+                                  <tr key={idx}>
+                                    <td style={{ fontWeight: 600, color: 'var(--danger)' }}>"{item.query}"</td>
+                                    <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{formattedDate}</td>
+                                    <td style={{ textAlign: 'right' }}>
+                                      <span className="badge-count badge-unanswered">{item.count}</span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
+                    Loading AI Search Analytics...
+                  </div>
+                )}
+              </div>
+
               {/* Console log list preview */}
               <div className="section-panel">
                 <div className="panel-header-section">
                   <h3>Recent Cache Activity</h3>
-                  <button 
+                  <button
                     onClick={fetchProducts}
                     style={{
                       background: 'none',
@@ -1341,21 +1715,49 @@ function App() {
                 <div style={{ display: 'flex', gap: '0.75rem', flex: 1, minWidth: '300px' }}>
                   <div style={{ position: 'relative', flex: 1 }}>
                     <Search size={14} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
-                    <input 
-                      type="text" 
-                      value={searchTerm}
+                    <input
+                      type="text"
+                      value={imagePreview ? "📷 [Image Search Active]" : searchTerm}
                       onChange={handleSearch}
-                      placeholder="Search product catalog..." 
+                      disabled={!!imagePreview}
+                      placeholder={imagePreview ? "Visual search query active..." : "Search product catalog..."}
                       style={{
                         width: '100%',
                         backgroundColor: 'var(--bg-main)',
                         border: '1px solid var(--border-color)',
                         borderRadius: 'var(--radius-sm)',
-                        padding: '0.5rem 0.5rem 0.5rem 2.2rem',
+                        padding: '0.5rem 2.8rem 0.5rem 2.2rem',
                         fontSize: '0.9rem',
-                        outline: 'none'
+                        outline: 'none',
+                        color: imagePreview ? 'var(--primary-light)' : 'var(--text-main)',
+                        fontWeight: imagePreview ? 600 : 'normal'
                       }}
                     />
+
+                    {/* Visual Camera Search Trigger */}
+                    <div style={{ position: 'absolute', right: '12px', top: '9px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {isImageSearching ? (
+                        <RefreshCw size={14} className="animate-spin" style={{ color: 'var(--primary-light)' }} />
+                      ) : imagePreview ? (
+                        <button
+                          onClick={clearImageSearch}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', padding: 0 }}
+                          title="Clear Image Search"
+                        >
+                          <X size={14} style={{ color: 'var(--danger)' }} />
+                        </button>
+                      ) : (
+                        <label style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }} title="Search by Image">
+                          <Camera size={14} className="hover-primary" style={{ color: 'var(--text-muted)', transition: 'color 0.2s' }} />
+                          <input
+                            type="file"
+                            accept="image/*"
+                            style={{ display: 'none' }}
+                            onChange={handleImageSearchUpload}
+                          />
+                        </label>
+                      )}
+                    </div>
                   </div>
                   <select
                     value={selectedCategory}
@@ -1400,10 +1802,10 @@ function App() {
                 </div>
                 <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', color: 'var(--text-main)', cursor: 'pointer' }}>
-                    <input 
-                      type="checkbox" 
-                      checked={isVectorSearch} 
-                      onChange={(e) => { setIsVectorSearch(e.target.checked); }} 
+                    <input
+                      type="checkbox"
+                      checked={isVectorSearch}
+                      onChange={(e) => { setIsVectorSearch(e.target.checked); }}
                     />
                     Show AI Search Telemetry
                   </label>
@@ -1458,7 +1860,7 @@ function App() {
               {searchTerm && getTypoSuggestion(searchTerm) && (
                 <div style={{ padding: '0.2rem 1.5rem 0.8rem 1.5rem', fontSize: '0.85rem', color: 'var(--text-main)' }}>
                   Did you mean:{' '}
-                  <span 
+                  <span
                     onClick={() => { setSearchTerm(getTypoSuggestion(searchTerm) || ''); setIsVectorSearch(true); }}
                     style={{
                       color: 'var(--primary)',
@@ -1478,8 +1880,8 @@ function App() {
                 <div style={{ padding: '0.2rem 1.5rem 1rem 1.5rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.6rem', fontSize: '0.82rem' }}>
                   <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Popular Searches:</span>
                   {["t-shirt", "wireless earbuds", "gaming laptop", "running shoes", "chef knife"].map((term, idx) => (
-                    <span 
-                      key={idx} 
+                    <span
+                      key={idx}
                       onClick={() => { setSearchTerm(term); setIsVectorSearch(true); }}
                       style={{
                         cursor: 'pointer',
@@ -1506,17 +1908,17 @@ function App() {
                   {(searchTelemetry?.parsedQuery?.category === "Men's Clothing" || searchTelemetry?.parsedQuery?.category === "Women's Clothing"
                     ? ["casual shirt", "denim jeans", "winter jacket", "leather belt"]
                     : ["Electronics", "Laptops", "Mobiles"].includes(searchTelemetry?.parsedQuery?.category || '')
-                    ? ["mechanical keyboard", "bluetooth speaker", "smart watch", "laptop stand"]
-                    : searchTelemetry?.parsedQuery?.category === "Shoes"
-                    ? ["leather boots", "canvas sneakers", "athletic socks", "penny loafers"]
-                    : searchTelemetry?.parsedQuery?.category === "Grocery"
-                    ? ["dark roast coffee", "pink salt", "green tea", "english breakfast"]
-                    : searchTelemetry?.parsedQuery?.category === "Books"
-                    ? ["sci-fi novels", "cookbooks", "mystery thriller", "fantasy epics"]
-                    : ["t-shirt", "wireless earbuds", "running shoes", "coffee mug"]
+                      ? ["mechanical keyboard", "bluetooth speaker", "smart watch", "laptop stand"]
+                      : searchTelemetry?.parsedQuery?.category === "Shoes"
+                        ? ["leather boots", "canvas sneakers", "athletic socks", "penny loafers"]
+                        : searchTelemetry?.parsedQuery?.category === "Grocery"
+                          ? ["dark roast coffee", "pink salt", "green tea", "english breakfast"]
+                          : searchTelemetry?.parsedQuery?.category === "Books"
+                            ? ["sci-fi novels", "cookbooks", "mystery thriller", "fantasy epics"]
+                            : ["t-shirt", "wireless earbuds", "running shoes", "coffee mug"]
                   ).map((term, idx) => (
-                    <span 
-                      key={idx} 
+                    <span
+                      key={idx}
                       onClick={() => { setSearchTerm(term); setIsVectorSearch(true); }}
                       style={{
                         cursor: 'pointer',
@@ -1532,6 +1934,72 @@ function App() {
                       {term}
                     </span>
                   ))}
+                </div>
+              )}
+
+              {/* AI Image Search Preview & Prediction */}
+              {imagePreview && (
+                <div style={{
+                  margin: '0 1.5rem 1rem 1.5rem',
+                  padding: '1rem',
+                  backgroundColor: 'rgba(139, 92, 246, 0.05)',
+                  border: '1px solid rgba(139, 92, 246, 0.2)',
+                  borderRadius: 'var(--radius-sm)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1.25rem',
+                  flexWrap: 'wrap'
+                }}>
+                  {/* Thumbnail Preview */}
+                  <div style={{ position: 'relative', width: '60px', height: '60px', borderRadius: '8px', overflow: 'hidden', border: '2px solid var(--primary-light)', boxShadow: '0 0 10px rgba(139, 92, 246, 0.3)', flexShrink: 0 }}>
+                    <img src={imagePreview} alt="Search Query" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+
+                  {/* AI Label & Confidence */}
+                  <div style={{ flex: 1, minWidth: '200px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.5px' }}>AI Identified Object:</span>
+                      {imagePrediction ? (
+                        <span style={{ backgroundColor: 'var(--primary)', color: '#fff', fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', fontWeight: 700, boxShadow: '0 0 8px rgba(99, 102, 241, 0.4)' }}>
+                          {imagePrediction.label}
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Classifying visual features...</span>
+                      )}
+                    </div>
+                    {imagePrediction && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ flex: 1, height: '6px', backgroundColor: 'var(--bg-main)', borderRadius: '3px', overflow: 'hidden' }}>
+                          <div style={{ width: `${Math.min(100, imagePrediction.score * 100)}%`, height: '100%', backgroundColor: 'var(--success)', borderRadius: '3px' }}></div>
+                        </div>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--success)' }}>
+                          {Math.round(imagePrediction.score * 100)}% Match
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Clear Button */}
+                  <button
+                    onClick={clearImageSearch}
+                    style={{
+                      backgroundColor: 'transparent',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '0.4rem 0.8rem',
+                      fontSize: '0.8rem',
+                      color: 'var(--danger)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      transition: 'all 0.2s'
+                    }}
+                    className="hover-danger-bg"
+                  >
+                    <X size={12} />
+                    Reset Search
+                  </button>
                 </div>
               )}
 
@@ -1618,7 +2086,7 @@ function App() {
                         {/* Horizontal Scroll Carousel Wrapper */}
                         <div className="carousel-wrapper-container">
                           {/* Scroll Left Button */}
-                          <button 
+                          <button
                             className="carousel-scroll-btn left"
                             onClick={() => {
                               const row = document.getElementById(`carousel-${catGroup.category.replace(/\s+/g, '-')}`);
@@ -1630,7 +2098,7 @@ function App() {
                           </button>
 
                           {/* Horizontal Scroll Carousel */}
-                          <div 
+                          <div
                             id={`carousel-${catGroup.category.replace(/\s+/g, '-')}`}
                             className="category-carousel-row"
                             style={{
@@ -1644,8 +2112,8 @@ function App() {
                             }}
                           >
                             {catGroup.products.map((p) => (
-                              <div 
-                                className="product-card" 
+                              <div
+                                className="product-card"
                                 key={p._id}
                                 style={{
                                   minWidth: '240px',
@@ -1712,7 +2180,7 @@ function App() {
                           </div>
 
                           {/* Scroll Right Button */}
-                          <button 
+                          <button
                             className="carousel-scroll-btn right"
                             onClick={() => {
                               const row = document.getElementById(`carousel-${catGroup.category.replace(/\s+/g, '-')}`);
@@ -1801,11 +2269,11 @@ function App() {
 
                   {/* Pagination controls footer */}
                   {totalPages > 1 && (
-                    <div 
+                    <div
                       style={{
-                        display: 'flex', 
-                        justifyContent: 'space-between', 
-                        alignItems: 'center', 
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
                         marginTop: '2rem',
                         paddingTop: '1rem',
                         borderTop: '1px solid var(--border-color)'
@@ -1881,20 +2349,20 @@ function App() {
               <form onSubmit={handleLoginSubmit}>
                 <div className="form-group">
                   <label className="form-label">Username</label>
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    required 
+                  <input
+                    type="text"
+                    className="form-input"
+                    required
                     value={loginUsername}
                     onChange={(e) => setLoginUsername(e.target.value)}
                   />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Password</label>
-                  <input 
-                    type="password" 
-                    className="form-input" 
-                    required 
+                  <input
+                    type="password"
+                    className="form-input"
+                    required
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
                   />
@@ -1913,11 +2381,11 @@ function App() {
                 <div style={{ display: 'flex', gap: '0.75rem', flex: 1, minWidth: '300px' }}>
                   <div style={{ position: 'relative', flex: 1 }}>
                     <Search size={14} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       value={searchTerm}
                       onChange={handleSearch}
-                      placeholder="Search admin inventory..." 
+                      placeholder="Search admin inventory..."
                       style={{
                         width: '100%',
                         backgroundColor: 'var(--bg-main)',
@@ -1974,13 +2442,13 @@ function App() {
                   <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                     {totalProducts} total items
                   </span>
-                  <button 
+                  <button
                     className="btn btn-primary"
                     onClick={() => setEditingProduct({ _id: '', name: '', description: '', price: 0, stock: 0, category: dynamicCategories[0] || CATEGORIES[0], tags: [], imageUrl: '' } as any)}
                   >
                     Create Product
                   </button>
-                  <button 
+                  <button
                     className="btn btn-secondary"
                     onClick={handleLogout}
                   >
@@ -2035,16 +2503,16 @@ function App() {
                             </td>
                             <td>
                               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                <button 
-                                  className="btn btn-secondary" 
+                                <button
+                                  className="btn btn-secondary"
                                   onClick={() => setEditingProduct(p)}
                                   title="Edit details"
                                 >
                                   <Edit size={14} />
                                   Edit
                                 </button>
-                                <button 
-                                  className="btn btn-danger" 
+                                <button
+                                  className="btn btn-danger"
                                   onClick={() => handleDelete(p._id)}
                                   disabled={deletingId === p._id}
                                   title="Delete product"
@@ -2064,11 +2532,11 @@ function App() {
 
               {/* Pagination controls footer */}
               {totalPages > 1 && (
-                <div 
+                <div
                   style={{
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    alignItems: 'center', 
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
                     marginTop: '2rem',
                     paddingTop: '1rem',
                     borderTop: '1px solid var(--border-color)'
@@ -2150,8 +2618,8 @@ function App() {
               <h3 className="drawer-title">
                 {editingProduct._id ? 'Modify Product Details' : 'Create New Product'}
               </h3>
-              <button 
-                className="btn btn-secondary" 
+              <button
+                className="btn btn-secondary"
                 onClick={() => setEditingProduct(null)}
                 style={{ padding: '0.25rem 0.5rem' }}
               >
@@ -2162,8 +2630,8 @@ function App() {
             <form onSubmit={handleFormSubmit}>
               <div className="form-group">
                 <label className="form-label">Product Name</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   className="form-input"
                   required
                   value={formName}
@@ -2173,7 +2641,7 @@ function App() {
 
               <div className="form-group">
                 <label className="form-label">Category</label>
-                <select 
+                <select
                   className="form-input"
                   required
                   value={formCategory}
@@ -2188,8 +2656,8 @@ function App() {
               <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
                   <label className="form-label">Price ($)</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     step="0.01"
                     min="0"
                     className="form-input"
@@ -2200,8 +2668,8 @@ function App() {
                 </div>
                 <div>
                   <label className="form-label">Stock Level</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     min="0"
                     className="form-input"
                     required
@@ -2213,7 +2681,7 @@ function App() {
 
               <div className="form-group">
                 <label className="form-label">Product Description</label>
-                <textarea 
+                <textarea
                   className="form-input form-textarea"
                   required
                   value={formDescription}
@@ -2223,8 +2691,8 @@ function App() {
 
               <div className="form-group">
                 <label className="form-label">Product Image URL</label>
-                <input 
-                  type="url" 
+                <input
+                  type="url"
                   className="form-input"
                   value={formImageUrl}
                   onChange={(e) => setFormImageUrl(e.target.value)}
@@ -2234,8 +2702,8 @@ function App() {
 
               <div className="form-group">
                 <label className="form-label">Tags (comma-separated)</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   className="form-input"
                   value={formTags}
                   onChange={(e) => setFormTags(e.target.value)}
@@ -2244,18 +2712,18 @@ function App() {
               </div>
 
               <div className="drawer-actions">
-                <button 
-                  type="button" 
-                  className="btn btn-secondary" 
+                <button
+                  type="button"
+                  className="btn btn-secondary"
                   style={{ flex: 1 }}
                   onClick={() => setEditingProduct(null)}
                   disabled={submitting}
                 >
                   Cancel
                 </button>
-                <button 
-                  type="submit" 
-                  className="btn btn-primary" 
+                <button
+                  type="submit"
+                  className="btn btn-primary"
                   style={{ flex: 1 }}
                   disabled={submitting}
                 >
@@ -2269,7 +2737,7 @@ function App() {
 
       {/* Shopping Cart Sidebar Drawer Overlay */}
       {isCartOpen && (
-        <div 
+        <div
           style={{
             position: 'fixed',
             top: 0,
@@ -2285,7 +2753,7 @@ function App() {
           }}
           onClick={() => setIsCartOpen(false)}
         >
-          <div 
+          <div
             style={{
               width: '100%',
               maxWidth: '450px',
@@ -2307,7 +2775,7 @@ function App() {
                 <ShoppingCart size={20} color="var(--primary-light)" />
                 Your Shopping Cart
               </h3>
-              <button 
+              <button
                 onClick={() => setIsCartOpen(false)}
                 style={{
                   background: 'none',
@@ -2328,7 +2796,7 @@ function App() {
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
                   <ShoppingCart size={48} style={{ opacity: 0.2, marginBottom: '1rem' }} />
                   <p>Your cart is empty.</p>
-                  <button 
+                  <button
                     onClick={() => { setIsCartOpen(false); setActiveTab('catalog'); }}
                     className="btn btn-primary"
                     style={{ marginTop: '1rem' }}
@@ -2338,8 +2806,8 @@ function App() {
                 </div>
               ) : (
                 cart.map((item) => (
-                  <div 
-                    key={item.product._id} 
+                  <div
+                    key={item.product._id}
                     style={{
                       display: 'flex',
                       gap: '0.75rem',
@@ -2371,7 +2839,7 @@ function App() {
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.25rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--border-color)', borderRadius: '4px', overflow: 'hidden' }}>
-                          <button 
+                          <button
                             onClick={() => updateCartQuantity(item.product._id, item.quantity - 1)}
                             style={{ border: 'none', backgroundColor: 'transparent', padding: '0.2rem 0.5rem', color: 'var(--text-main)', cursor: 'pointer' }}
                           >
@@ -2380,7 +2848,7 @@ function App() {
                           <span style={{ padding: '0 0.5rem', fontSize: '0.85rem', fontWeight: 600, minWidth: '20px', textAlign: 'center' }}>
                             {item.quantity}
                           </span>
-                          <button 
+                          <button
                             onClick={() => updateCartQuantity(item.product._id, item.quantity + 1)}
                             style={{ border: 'none', backgroundColor: 'transparent', padding: '0.2rem 0.5rem', color: 'var(--text-main)', cursor: 'pointer' }}
                           >
@@ -2392,7 +2860,7 @@ function App() {
                         </span>
                       </div>
                     </div>
-                    <button 
+                    <button
                       onClick={() => removeFromCart(item.product._id)}
                       style={{
                         position: 'absolute',
@@ -2419,10 +2887,10 @@ function App() {
                   <Layers size={14} color="var(--success)" />
                   People Also Viewed (AI Recommendations)
                 </h4>
-                
+
                 <div style={{ display: 'flex', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.5rem', scrollbarWidth: 'thin' }}>
                   {recommendations.map((rec) => (
-                    <div 
+                    <div
                       key={rec._id}
                       style={{
                         minWidth: '135px',
@@ -2484,9 +2952,9 @@ function App() {
               <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.25rem', marginTop: '1rem' }}>
                 {/* Coupon Code Input */}
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-                  <input 
-                    type="text" 
-                    placeholder="ENTER COUPON (e.g. SAVE20)" 
+                  <input
+                    type="text"
+                    placeholder="ENTER COUPON (e.g. SAVE20)"
                     value={couponInput}
                     onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
                     style={{
@@ -2500,7 +2968,7 @@ function App() {
                       color: 'var(--text-main)'
                     }}
                   />
-                  <button 
+                  <button
                     onClick={applyCoupon}
                     disabled={calculating}
                     className="btn"
@@ -2538,7 +3006,7 @@ function App() {
                 </div>
 
                 {/* Checkout Trigger Button */}
-                <button 
+                <button
                   onClick={handleCheckout}
                   disabled={checkingOut}
                   className="btn btn-primary"

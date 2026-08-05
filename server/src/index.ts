@@ -11,6 +11,7 @@ import { isRedisConnected } from './config/redis';
 import productRouter from './routes/productRoutes';
 import authRouter from './routes/authRoutes';
 import checkoutRouter from './routes/checkoutRoutes';
+import analyticsRouter from './routes/analyticsRoutes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
 let ioInstance: SocketIOServer | null = null;
@@ -48,9 +49,9 @@ if (env.NODE_ENV === 'development') {
   app.use(morgan('combined'));
 }
 
-// Body parsing middleware
-app.use(express.json({ limit: '10kb' }));
-app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+// Body parsing middleware (Increased to 50mb to support base64 image uploads for AI visual search)
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Base API endpoints
 app.get('/api/health', (req, res) => {
@@ -70,6 +71,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRouter);
 app.use('/api/products', productRouter);
 app.use('/api/checkout', checkoutRouter);
+app.use('/api/analytics', analyticsRouter);
 
 // Fallback handlers for routes that do not exist
 app.use(notFoundHandler);

@@ -1074,6 +1074,127 @@ input::placeholder, textarea::placeholder {
   right: -15px;
 }
 
+/* AI Search Analytics Section */
+.analytics-subgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+@media (max-width: 1024px) {
+  .analytics-subgrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.analytics-table-container {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+.analytics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+.analytics-table th {
+  padding: 0.6rem 0.8rem;
+  border-bottom: 2px solid var(--border-color);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.analytics-table td {
+  padding: 0.6rem 0.8rem;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-main);
+  vertical-align: middle;
+}
+
+.analytics-table tr:hover td {
+  background-color: rgba(255, 255, 255, 0.01);
+}
+
+.badge-count {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 12px;
+  background-color: var(--primary-glow);
+  color: var(--primary-light);
+  font-weight: 700;
+  font-size: 0.75rem;
+}
+
+.badge-unanswered {
+  background-color: var(--danger-glow);
+  color: var(--danger);
+}
+
+.tag-searchtype {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.tag-searchtype.text {
+  background-color: rgba(99, 102, 241, 0.15);
+  color: #818cf8;
+}
+
+.tag-searchtype.vector {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+.tag-searchtype.image {
+  background-color: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
+.distribution-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  background-color: var(--border-color);
+  margin: 1rem 0;
+}
+
+.distribution-segment {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.distribution-segment.text {
+  background-color: #6366f1;
+}
+
+.distribution-segment.vector {
+  background-color: #10b981;
+}
+
+.distribution-segment.image {
+  background-color: #f59e0b;
+}
+
+.trends-chart-wrapper {
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 1.25rem;
+  margin-top: 1.5rem;
+}
+
+
 
 
 

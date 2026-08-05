@@ -7,4 +7,5 @@ dist
 .idea
 .vscode
 server/src/model/
+products.md
 

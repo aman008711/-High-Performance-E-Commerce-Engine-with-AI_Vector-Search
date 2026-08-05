@@ -1,9 +1,23 @@
 import { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import { Product } from '../models/Product';
+import { SearchLog } from '../models/SearchLog';
 import { BadRequestError, NotFoundError } from '../utils/errors';
 import { getCache, setCache, delCache, delCachePattern, isRedisConnected } from '../config/redis';
-import { getAIEmbedding } from '../config/embedder';
+import { getAIEmbedding, classifyImageBuffer } from '../config/embedder';
+
+// Helper to log search activity asynchronously without blocking the request
+const logSearch = (query: string, searchType: 'text' | 'vector' | 'image', resultsCount: number) => {
+  if (!query || !query.trim()) return;
+  SearchLog.create({
+    query: query.trim(),
+    searchType,
+    resultsCount
+  }).catch(err => {
+    console.error(`[SearchLog] Failed to log search:`, err);
+  });
+};
+
 
 // Retrieve product listings with Redis Cache-Aside optimizations
 export const getProducts = async (
@@ -35,6 +49,9 @@ export const getProducts = async (
       res.setHeader('X-Response-Time', `${latency}ms`);
       
       const parsedData = JSON.parse(cachedData);
+      if (search) {
+        logSearch(search, 'text', parsedData.total || 0);
+      }
       res.status(200).json({
         status: 'success',
         data: parsedData,
@@ -90,6 +107,10 @@ export const getProducts = async (
     // Set HTTP headers indicating Cache Miss
     res.setHeader('X-Cache', isRedisConnected() ? 'MISS' : 'BYPASS');
     res.setHeader('X-Response-Time', `${latency}ms`);
+
+    if (search) {
+      logSearch(search, 'text', total || 0);
+    }
 
     res.status(200).json({
       status: 'success',
@@ -399,25 +420,39 @@ export const parseQueryUnderstanding = (searchQuery: string): ParsedQuery => {
     { keywords: ["top", "tops", "blouse", "blouses"], category: "Women's Clothing", subcategory: "Tops" },
     { keywords: ["skirt", "skirts"], category: "Women's Clothing", subcategory: "Skirts" },
     { keywords: ["sweater", "sweaters", "cardigan"], subcategory: "Sweaters" },
-    { keywords: ["shoes", "sneakers", "footwear", "running shoes", "boots", "loafers"], category: "Shoes" },
+    { keywords: ["shoes", "sneakers", "footwear", "running shoes", "boots", "loafers", "bellies", "heels", "flats", "sandals", "slippers", "clogs", "running shoe", "clog", "sandal", "boot"], category: "Shoes" },
     { keywords: ["headphones", "earbuds", "earphones", "headset"], category: "Electronics", subcategory: "Headphones" },
-    { keywords: ["keyboard", "keyboards"], category: "Electronics", subcategory: "Keyboards" },
-    { keywords: ["speaker", "speakers", "soundbar"], category: "Electronics", subcategory: "Speakers" },
+    { keywords: ["keyboard", "keyboards", "keypad"], category: "Electronics", subcategory: "Keyboards" },
+    { keywords: ["speaker", "speakers", "soundbar", "loudspeaker"], category: "Electronics", subcategory: "Speakers" },
     { keywords: ["monitor", "monitors", "display", "screen"], category: "Electronics", subcategory: "Monitors" },
     { keywords: ["webcam", "webcams"], category: "Electronics", subcategory: "Webcams" },
-    { keywords: ["phone", "phones", "mobile", "mobiles", "smartphone", "smartphones"], category: "Mobiles" },
-    { keywords: ["laptop", "laptops", "notebook", "notebooks", "ultrabook"], category: "Computers" },
-    { keywords: ["watch", "watches", "smartwatch"], category: "Watches" },
-    { keywords: ["beauty", "cream", "shampoo", "perfume", "mist", "makeup", "cosmetics"], category: "Beauty & Personal Care" },
-    { keywords: ["blender", "kettle", "pan", "cookware", "pot", "toaster", "kitchen"], category: "Home & Kitchen" },
-    { keywords: ["coffee", "salt", "pepper", "tea", "grocery", "food", "snacks"], category: "Food & Nutrition" },
-    { keywords: ["yoga", "dumbbell", "tent", "racket", "sports", "camping"], category: "Sports & Fitness" },
-    { keywords: ["book", "books", "novel", "novels", "biography", "memoir", "cookbook"], category: "Pens & Stationery" },
-    { keywords: ["toy", "toys", "lego", "drone", "blocks", "puzzle", "board game"], category: "Toys & Games" },
-    { keywords: ["furniture", "chair", "table", "desk", "bookshelf"], category: "Furniture" },
-    { keywords: ["accessories", "sunglasses", "belt", "backpack", "beanie"], category: "Bags, Wallets & Belts" }
+    { keywords: ["phone", "phones", "mobile", "mobiles", "smartphone", "smartphones", "cellphone", "cellphones", "cellular phone", "cellular telephone", "telephone", "hand-held computer"], category: "Mobiles" },
+    { keywords: ["laptop", "laptops", "notebook", "notebooks", "ultrabook", "computer", "computers", "desktop computer", "netbook"], category: "Computers" },
+    { keywords: ["watch", "watches", "smartwatch", "smartwatches", "analog clock", "clock", "clocks"], category: "Watches" },
+    { keywords: ["beauty", "cream", "shampoo", "perfume", "mist", "makeup", "cosmetics", "vanity case", "hair care"], category: "Beauty & Personal Care" },
+    { keywords: ["blender", "kettle", "pan", "cookware", "pot", "pots", "toaster", "kitchen", "jug", "glass set", "cup", "mug", "plate", "tableware", "cutlery", "coffeepot", "teapot"], category: "Home & Kitchen" },
+    { keywords: ["coffee", "salt", "pepper", "tea", "grocery", "food", "snacks", "weight gainers", "mass gainers", "health & nutrition"], category: "Food & Nutrition" },
+    { keywords: ["yoga", "dumbbell", "tent", "racket", "sports", "camping", "thigh pads", "elbow pads", "chest pads", "skates"], category: "Sports & Fitness" },
+    { keywords: ["book", "books", "novel", "novels", "biography", "memoir", "cookbook", "paperweight", "paper weight", "school supplies"], category: "Pens & Stationery" },
+    { keywords: ["toy", "toys", "lego", "drone", "blocks", "puzzle", "board game", "board games", "doll", "balloon", "teddy bear"], category: "Toys & Games" },
+    { keywords: ["furniture", "chair", "table", "desk", "bookshelf", "sofa", "couch", "sofa bed"], category: "Furniture" },
+    { keywords: ["accessories", "sunglasses", "belt", "backpack", "backpacks", "beanie"], category: "Bags, Wallets & Belts" },
+    { keywords: ["men's clothing", "menswear", "boy's clothing", "cargos"], category: "Men's Clothing" },
+    { keywords: ["women's clothing", "womenswear", "girl's clothing", "saree", "sari", "kurta", "bra", "panties", "cycling shorts"], category: "Women's Clothing" },
+    { keywords: ["automotive", "car", "cars", "motorcycle", "grill cover", "sun shade", "tire cleaner", "wheel cleaner"], category: "Automotive" },
+    { keywords: ["jewellery", "jewelry", "ring", "rings", "necklace", "earring", "earrings", "pendant", "opal ring", "amethyst ring"], category: "Jewellery" },
+    { keywords: ["pet supplies", "pets", "dog", "cat", "dog shampoo", "dog collar", "dog toy"], category: "Pet Supplies" },
+    { keywords: ["baby care", "baby", "infant", "infant wear", "dungaree", "baby top"], category: "Baby Care" },
+    { keywords: ["home furnishing", "curtain", "curtains", "bedsheet", "bedsheets", "pillow", "blanket", "linen"], category: "Home Furnishing" },
+    { keywords: ["gaming", "gaming accessories", "hdmi cable", "xbox", "playstation", "nintendo"], category: "Gaming" },
+    { keywords: ["camera", "cameras", "lens", "tripod", "flash", "battery charger"], category: "Cameras & Accessories" },
+    { keywords: ["automation & robotics", "smart door lock", "lock", "robot", "robotic"], category: "Automation & Robotics" },
+    { keywords: ["tools & hardware", "tools", "hardware"], category: "Tools & Hardware" },
+    { keywords: ["home improvement", "swiss knife", "wrench", "pipe wrench", "cable tie"], category: "Home Improvement" },
+    { keywords: ["clutch", "clutches", "table cover"], category: "General" }
   ];
 
+  let found = false;
   for (const map of mappings) {
     for (const kw of map.keywords) {
       const regex = new RegExp(`\\b${kw}\\b`, 'i');
@@ -435,9 +470,11 @@ export const parseQueryUnderstanding = (searchQuery: string): ParsedQuery => {
             parsed.category = "Men's Clothing"; 
           }
         }
+        found = true;
         break;
       }
     }
+    if (found) break;
   }
 
   // Adjust "cheap" value relative to parsed category
@@ -482,9 +519,11 @@ export const searchProductsVector = async (
 
       res.setHeader('X-Cache', 'HIT');
       res.setHeader('X-Response-Time', `${latency}ms`);
+      const parsedData = JSON.parse(cachedResult);
+      logSearch(search, 'vector', parsedData.total || 0);
       res.status(200).json({
         status: 'success',
-        data: JSON.parse(cachedResult),
+        data: parsedData,
       });
       return;
     }
@@ -699,6 +738,8 @@ export const searchProductsVector = async (
     // Cache the response payload (1 hour)
     await setCache(cacheKey, JSON.stringify(responsePayload), 3600);
 
+    logSearch(search, 'vector', total || 0);
+
     res.setHeader('X-Cache', isRedisConnected() ? 'MISS' : 'BYPASS');
     res.setHeader('X-Response-Time', `${latency}ms`);
     res.status(200).json({
@@ -863,6 +904,349 @@ export const getCategoryWiseProducts = async (
     res.status(200).json({
       status: 'success',
       data: results,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Helper to enrich predicted ImageNet labels with database-friendly synonyms
+const enhancePredictedLabel = (label: string): string => {
+  const query = label.toLowerCase().trim();
+  let enhanced = query;
+
+  if (/\b(telephone|phone|cellphone|hand-held computer)\b/i.test(query)) {
+    enhanced += ' phone mobile smartphone';
+  }
+  if (/\b(notebook|laptop|computer|netbook)\b/i.test(query)) {
+    enhanced += ' computer laptop notebook';
+  }
+  if (/\b(clock|watch|timepiece)\b/i.test(query)) {
+    enhanced += ' watch watches';
+  }
+  if (/\b(keyboard|keypad)\b/i.test(query)) {
+    enhanced += ' keyboard keypad';
+  }
+  if (/\b(loudspeaker|speaker|soundbar)\b/i.test(query)) {
+    enhanced += ' speaker speakers soundbar';
+  }
+  if (/\b(backpack|wallet|purse|bag|clutch)\b/i.test(query)) {
+    enhanced += ' bag bags clutch wallet';
+  }
+  if (/\b(shoe|sneaker|boot|sandal|slipper|clog|bellies|footwear)\b/i.test(query)) {
+    enhanced += ' shoes footwear sneakers';
+  }
+  if (/\b(shirt|t-shirt|tee|jersey|clothing|wear|apparel)\b/i.test(query)) {
+    enhanced += ' clothing shirt wear';
+  }
+  if (/\b(pot|plant|flower|decor|showpiece|vase)\b/i.test(query)) {
+    enhanced += ' decor plant showpiece';
+  }
+  if (/\b(blender|kettle|pan|kitchen|cookware|toaster|jug|glass|cup|mug)\b/i.test(query)) {
+    enhanced += ' kitchen cookware';
+  }
+  if (/\b(shampoo|cream|beauty|makeup|cosmetics|perfume)\b/i.test(query)) {
+    enhanced += ' beauty cosmetics';
+  }
+  if (/\b(toy|lego|game|puzzle|blocks)\b/i.test(query)) {
+    enhanced += ' toy toys board game';
+  }
+  if (/\b(car|vehicle|automotive|sun shade|cleaner|tire|wheel)\b/i.test(query)) {
+    enhanced += ' automotive car parts';
+  }
+  if (/\b(ring|necklace|earring|jewelry|jewellery)\b/i.test(query)) {
+    enhanced += ' jewellery jewelry ring';
+  }
+  if (/\b(curtain|bedsheet|sheet|linen|pillow)\b/i.test(query)) {
+    enhanced += ' furnishing curtain bedsheet';
+  }
+  if (/\b(tool|knife|wrench|hardware|electrical)\b/i.test(query)) {
+    enhanced += ' tools hardware';
+  }
+
+  return enhanced;
+};
+
+// AI Image Classification & Visual Search Controller
+export const searchProductsImage = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { image, category: categoryFilter } = req.body;
+    const page = parseInt(req.query.page as string, 10) || 1;
+    const limit = parseInt(req.query.limit as string, 10) || 12;
+    const sortBy = req.query.sortBy as string;
+    const sortOrder = req.query.sortOrder as string;
+
+    if (!image) {
+      throw new BadRequestError('Base64 image string is required for visual search');
+    }
+
+    const startTime = performance.now();
+
+    // 1. Convert base64 to binary buffer
+    const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
+    const imageBuffer = Buffer.from(base64Data, 'base64');
+
+    // 2. Classify image using pre-trained ResNet-50 pipeline from buffer
+    const predictions = await classifyImageBuffer(imageBuffer);
+
+    if (!predictions || predictions.length === 0) {
+      throw new BadRequestError('Could not classify image');
+    }
+
+    // Scan predictions to see if any secondary predictions map to a valid category in our store
+    let bestPrediction = predictions[0];
+    let matchedCategory = '';
+    let matchedSubcategory = '';
+
+    for (const pred of predictions) {
+      const label = pred.label.split(',')[0].trim();
+      const enhanced = enhancePredictedLabel(label);
+      const parsed = parseQueryUnderstanding(enhanced);
+      if (parsed.category && pred.score > 0.05) {
+        bestPrediction = pred;
+        matchedCategory = parsed.category;
+        matchedSubcategory = parsed.subcategory || '';
+        break;
+      }
+    }
+
+    const predictedLabel = bestPrediction.label;
+    const confidenceScore = bestPrediction.score;
+    const rawQuery = predictedLabel.split(',')[0].trim();
+    const searchQuery = enhancePredictedLabel(rawQuery);
+
+    // 3. Perform Hybrid Semantic Vector search using the predicted label
+    const parsedQuery = parseQueryUnderstanding(searchQuery);
+    
+    // Set resolved category and subcategory from prediction scan
+    if (matchedCategory) {
+      parsedQuery.category = matchedCategory;
+    }
+    if (matchedSubcategory) {
+      parsedQuery.subcategory = matchedSubcategory;
+    }
+    
+    // Override parsed category with category filter if specified
+    if (categoryFilter) {
+      parsedQuery.category = categoryFilter;
+    }
+
+    const queryVector = await getAIEmbedding(searchQuery);
+    const queryWords = searchQuery.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
+
+    let candidates: any[] = [];
+    let layerUsed = "Direct Metadata Match (Visual)";
+    let isAtlasUsed = false;
+
+    // Attempt Atlas Vector Search
+    try {
+      const filter: any = {};
+      if (parsedQuery.category) filter.category = parsedQuery.category;
+      if (parsedQuery.brand) filter.brand = parsedQuery.brand;
+      if (parsedQuery.gender) filter.gender = parsedQuery.gender;
+      if (parsedQuery.color) filter.color = parsedQuery.color;
+      if (parsedQuery.maxPrice || parsedQuery.minPrice) {
+        filter.price = {};
+        if (parsedQuery.maxPrice) filter.price.$lte = parsedQuery.maxPrice;
+        if (parsedQuery.minPrice) filter.price.$gte = parsedQuery.minPrice;
+      }
+
+      const pipeline: any[] = [
+        {
+          $vectorSearch: {
+            index: "vector_index",
+            path: "vectorEmbedding",
+            queryVector: queryVector,
+            numCandidates: Math.max(100, limit * 5),
+            limit: limit * 2,
+            ...(Object.keys(filter).length > 0 ? { filter } : {})
+          }
+        },
+        {
+          $project: {
+            name: 1,
+            description: 1,
+            price: 1,
+            stock: 1,
+            category: 1,
+            subcategory: 1,
+            brand: 1,
+            color: 1,
+            gender: 1,
+            material: 1,
+            rating: 1,
+            tags: 1,
+            imageUrl: 1,
+            vectorEmbedding: 1,
+            score: { $meta: "vectorSearchScore" }
+          }
+        }
+      ];
+
+      candidates = await Product.aggregate(pipeline);
+      isAtlasUsed = true;
+      layerUsed = "MongoDB Atlas Vector Search (Visual)";
+    } catch (atlasError) {
+      // Fallback to local in-memory cosine similarity
+      layerUsed = "Direct Metadata Match (Visual)";
+
+      const filterQuery: any = { vectorEmbedding: { $exists: true, $ne: null } };
+      if (parsedQuery.category) {
+        filterQuery.category = parsedQuery.category;
+      }
+      if (parsedQuery.subcategory) {
+        filterQuery.subcategory = parsedQuery.subcategory;
+      }
+      if (parsedQuery.brand) {
+        filterQuery.brand = parsedQuery.brand;
+      }
+      if (parsedQuery.gender) {
+        filterQuery.gender = parsedQuery.gender;
+      }
+      if (parsedQuery.color) {
+        filterQuery.color = parsedQuery.color;
+      }
+      if (parsedQuery.maxPrice || parsedQuery.minPrice) {
+        filterQuery.price = {};
+        if (parsedQuery.maxPrice) filterQuery.price.$lte = parsedQuery.maxPrice;
+        if (parsedQuery.minPrice) filterQuery.price.$gte = parsedQuery.minPrice;
+      }
+
+      candidates = await Product.find(
+        filterQuery,
+        { name: 1, description: 1, price: 1, stock: 1, category: 1, subcategory: 1, brand: 1, color: 1, gender: 1, material: 1, rating: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
+      );
+
+      if (candidates.length === 0 && parsedQuery.category) {
+        layerUsed = "Category Fallback Match (Visual)";
+        candidates = await Product.find(
+          { category: parsedQuery.category, vectorEmbedding: { $exists: true, $ne: null } },
+          { name: 1, description: 1, price: 1, stock: 1, category: 1, subcategory: 1, brand: 1, color: 1, gender: 1, material: 1, rating: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
+        );
+      }
+
+      if (candidates.length === 0 && !parsedQuery.category && !parsedQuery.subcategory) {
+        layerUsed = "Global Fallback Match (Visual)";
+        candidates = await Product.find(
+          { vectorEmbedding: { $exists: true, $ne: null } },
+          { name: 1, description: 1, price: 1, stock: 1, category: 1, subcategory: 1, brand: 1, color: 1, gender: 1, material: 1, rating: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
+        );
+      }
+    }
+
+    // Hybrid Ranking Score Calculation
+    let scoredCandidates = candidates.map((product) => {
+      const productEmbedding = product.vectorEmbedding || [];
+      const vectorScore = isAtlasUsed && typeof product.score === 'number'
+        ? product.score
+        : queryVector.reduce((sum, val, idx) => sum + val * (productEmbedding[idx] || 0), 0);
+
+      const rawProduct = typeof product.toObject === 'function' ? product.toObject() : product;
+
+      // Exact title matches boost
+      const prodNameLower = rawProduct.name.toLowerCase();
+      const searchLower = searchQuery.toLowerCase();
+      let titleScore = 0;
+      if (prodNameLower === searchLower) {
+        titleScore = 1.0;
+      } else if (prodNameLower.startsWith(searchLower)) {
+        titleScore = 0.8;
+      } else if (prodNameLower.includes(searchLower)) {
+        titleScore = 0.5;
+      }
+
+      // Category / Subcategory exact matches boost
+      let categoryMatchScore = 0;
+      if (parsedQuery.category && rawProduct.category === parsedQuery.category) {
+        categoryMatchScore += 0.6;
+      }
+      if (parsedQuery.subcategory && rawProduct.subcategory === parsedQuery.subcategory) {
+        categoryMatchScore += 0.4;
+      }
+
+      // Keyword matches boost
+      let matches = 0;
+      const textToMatch = `${rawProduct.name} ${rawProduct.description} ${rawProduct.subcategory || ''} ${rawProduct.brand || ''} ${rawProduct.color || ''} ${rawProduct.material || ''} ${rawProduct.tags.join(' ')}`.toLowerCase();
+      for (const word of queryWords) {
+        const wordStem = word.endsWith('s') && word.length > 3 ? word.slice(0, -1) : word;
+        if (textToMatch.includes(word) || textToMatch.includes(wordStem)) {
+          matches++;
+        }
+      }
+      const keywordScore = queryWords.length > 0 ? (matches / queryWords.length) : 0.0;
+
+      // Rating/Popularity component
+      const ratingScore = (rawProduct.rating || 4.0) / 5.0;
+
+      // Combined Hybrid Search Ranking formula
+      const finalScore = (titleScore * 0.40) + (categoryMatchScore * 0.25) + (keywordScore * 0.15) + (vectorScore * 0.15) + (ratingScore * 0.05);
+
+      return {
+        ...rawProduct,
+        score: parseFloat(Math.min(0.99, finalScore).toFixed(4)),
+      };
+    });
+
+    // Enforce relevance threshold of 0.20
+    // Sort all candidates first
+    if (sortBy === 'price') {
+      scoredCandidates.sort((a, b) => sortOrder === 'asc' ? a.price - b.price : b.price - a.price);
+    } else if (sortBy === 'name') {
+      scoredCandidates.sort((a, b) => sortOrder === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name));
+    } else if (sortBy === 'createdAt') {
+      scoredCandidates.sort((a, b) => {
+        const d1 = new Date(a.createdAt).getTime();
+        const d2 = new Date(b.createdAt).getTime();
+        return sortOrder === 'asc' ? d1 - d2 : d2 - d1;
+      });
+    } else {
+      scoredCandidates.sort((a, b) => b.score - a.score);
+    }
+
+    // Enforce relevance threshold of 0.20
+    let finalProducts = scoredCandidates.filter(c => c.score >= 0.20);
+
+    // If no products pass the threshold, fallback to the top candidates anyway to avoid an empty state
+    if (finalProducts.length === 0 && scoredCandidates.length > 0) {
+      layerUsed += " (Low Relevance Fallback)";
+      // Keep sorting based on score since it's a fallback
+      scoredCandidates.sort((a, b) => b.score - a.score);
+      finalProducts = scoredCandidates;
+    }
+
+    const total = finalProducts.length;
+    const products = finalProducts.slice((page - 1) * limit, page * limit);
+    const pages = Math.ceil(total / limit);
+
+    const endTime = performance.now();
+    const latency = parseFloat((endTime - startTime).toFixed(2));
+
+    res.setHeader('X-Cache', 'BYPASS');
+    res.setHeader('X-Response-Time', `${latency}ms`);
+
+    logSearch(rawQuery, 'image', total || 0);
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        products,
+        total,
+        pages,
+        prediction: {
+          label: predictedLabel,
+          score: confidenceScore,
+          allPredictions: predictions
+        },
+        telemetry: {
+          parsedQuery,
+          latencyMs: latency,
+          layerUsed
+        }
+      }
     });
   } catch (error) {
     next(error);

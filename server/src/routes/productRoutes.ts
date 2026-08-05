@@ -6,6 +6,7 @@ import {
   updateProduct,
   deleteProduct,
   searchProductsVector,
+  searchProductsImage,
   getProductRecommendations,
   getCategoryWiseProducts
 } from '../controllers/productController';
@@ -19,6 +20,9 @@ router.use(apiRateLimiter);
 
 // AI Vector Semantic Search Endpoint
 router.get('/search/vector', searchProductsVector);
+
+// AI Image-Based Product Search Endpoint
+router.post('/search/image', searchProductsImage);
 
 // Retrieve category-wise product listings
 router.get('/category-wise', getCategoryWiseProducts);

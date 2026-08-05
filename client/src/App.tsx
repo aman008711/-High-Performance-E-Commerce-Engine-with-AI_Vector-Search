@@ -1172,7 +1172,7 @@ function App() {
         {/* Active Content Frame */}
         <div className="content-frame">
           {activeTab === 'dashboard' && (
-            <div>
+            <div className="fade-in">
               {/* Telemetry Widgets Grid */}
               <div className="dashboard-grid">
                 {statsList.map((stat, idx) => {
@@ -1665,8 +1665,36 @@ function App() {
                     </div>
                   </>
                 ) : (
-                  <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
-                    Loading AI Search Analytics...
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '1.25rem' }} className="fade-in">
+                    {/* Key Stats Cards Skeleton */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                      {Array.from({ length: 3 }).map((_, idx) => (
+                        <div className="shimmer-card" key={idx} style={{ height: '90px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                          <div className="shimmer-item" style={{ height: '14px', width: '60%' }}></div>
+                          <div className="shimmer-item" style={{ height: '24px', width: '40%' }}></div>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Search Distribution & Chart Skeleton */}
+                    <div className="shimmer-card" style={{ height: '200px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      <div className="shimmer-item" style={{ height: '20px', width: '30%' }}></div>
+                      <div className="shimmer-item" style={{ height: '8px', width: '100%' }}></div>
+                      <div className="shimmer-item" style={{ height: '100px', width: '100%' }}></div>
+                    </div>
+                    {/* Tables Skeleton */}
+                    <div className="analytics-subgrid">
+                      {Array.from({ length: 2 }).map((_, idx) => (
+                        <div className="shimmer-card" key={idx} style={{ height: '260px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                          <div className="shimmer-item" style={{ height: '20px', width: '50%' }}></div>
+                          {Array.from({ length: 4 }).map((_, rIdx) => (
+                            <div key={rIdx} style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', marginTop: '0.25rem' }}>
+                              <div className="shimmer-item" style={{ height: '16px', width: '60%' }}></div>
+                              <div className="shimmer-item" style={{ height: '16px', width: '15%' }}></div>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1709,7 +1737,7 @@ function App() {
           )}
 
           {activeTab === 'catalog' && (
-            <div className="section-panel">
+            <div className="section-panel fade-in">
               {/* Filter Controls Header */}
               <div className="panel-header-section" style={{ flexWrap: 'wrap', gap: '1rem' }}>
                 <div style={{ display: 'flex', gap: '0.75rem', flex: 1, minWidth: '300px' }}>
@@ -2330,7 +2358,7 @@ function App() {
           )}
 
           {activeTab === 'admin' && !authToken && (
-            <div className="section-panel" style={{ maxWidth: '400px', margin: '4rem auto', padding: '2rem' }}>
+            <div className="section-panel fade-in" style={{ maxWidth: '400px', margin: '4rem auto', padding: '2rem' }}>
               <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
                 <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.5rem' }}>
                   Admin Authorization Required
@@ -2375,7 +2403,7 @@ function App() {
           )}
 
           {activeTab === 'admin' && authToken && (
-            <div className="section-panel">
+            <div className="section-panel fade-in">
               {/* Filter Controls Header */}
               <div className="panel-header-section" style={{ flexWrap: 'wrap', gap: '1rem' }}>
                 <div style={{ display: 'flex', gap: '0.75rem', flex: 1, minWidth: '300px' }}>
@@ -2591,7 +2619,7 @@ function App() {
           )}
 
           {activeTab === 'logs' && (
-            <div className="section-panel">
+            <div className="section-panel fade-in">
               <div className="panel-header-section">
                 <h3>Live Console Telemetry</h3>
                 <span className="telemetry-lbl">WebSocket Streaming Logs</span>
@@ -2971,7 +2999,6 @@ function App() {
                   <button
                     onClick={applyCoupon}
                     disabled={calculating}
-                    className="btn"
                     style={{
                       padding: '0.5rem 1rem',
                       fontSize: '0.8rem',
@@ -2980,7 +3007,7 @@ function App() {
                       cursor: 'pointer'
                     }}
                   >
-                    {calculating ? '...' : 'Apply'}
+                    {calculating ? <RefreshCw size={12} className="animate-spin" /> : 'Apply'}
                   </button>
                 </div>
 
@@ -3023,7 +3050,14 @@ function App() {
                     boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
                   }}
                 >
-                  {checkingOut ? 'Processing Checkout...' : 'Place Order'}
+                  {checkingOut ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" />
+                      <span>Processing Checkout...</span>
+                    </>
+                  ) : (
+                    'Place Order'
+                  )}
                 </button>
               </div>
             )}

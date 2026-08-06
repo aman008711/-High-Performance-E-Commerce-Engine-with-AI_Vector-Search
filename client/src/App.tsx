@@ -1,4 +1,4 @@
-import { useState, useEffect, ChangeEvent } from 'react';
+import { useState, useEffect, ChangeEvent, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { api, ApiProduct, SearchAnalyticsResponse } from './services/api';
 import {
@@ -179,6 +179,7 @@ const getLoremFlickrUrl = (name: string, category: string, width = 500, height =
 };
 
 function App() {
+  const searchRef = useRef(0);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'catalog' | 'admin' | 'logs'>('dashboard');
   const [hoveredSlice, setHoveredSlice] = useState<number | null>(null);
   const [apiStatus, setApiStatus] = useState<'Online' | 'Offline' | 'Checking'>('Checking');
@@ -652,7 +653,7 @@ function App() {
 
 
   // Fetch products from backend with client-side fallback if route is not implemented yet
-  const fetchProducts = async () => {
+  const fetchProducts = async (searchId?: number) => {
     setLoading(true);
     try {
       let fetchPromise;
@@ -684,6 +685,7 @@ function App() {
       }
 
       const response = await fetchPromise;
+      if (searchId !== undefined && searchId !== searchRef.current) return;
 
       if (imagePreview && response.data && 'prediction' in response.data) {
         const payloadData = response.data as any;
@@ -740,6 +742,7 @@ function App() {
 
       // Inject standard latency delay (600ms) to demonstrate loading skeletons
       await new Promise(resolve => setTimeout(resolve, 600));
+      if (searchId !== undefined && searchId !== searchRef.current) return;
 
       setProducts(fallbackData.list);
       setTotalProducts(fallbackData.total);
@@ -763,7 +766,9 @@ function App() {
       setAvgLatency(prev => parseFloat(((prev * 0.9) + (simulatedLatency * 0.1)).toFixed(1)));
       setCacheHitRate(prev => parseFloat((prev * 0.95).toFixed(1)));
     } finally {
-      setLoading(false);
+      if (searchId === undefined || searchId === searchRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -808,7 +813,8 @@ function App() {
 
   // Re-run search whenever page, category, search mode, debounced keyword, image, or sorting updates
   useEffect(() => {
-    fetchProducts();
+    const searchId = ++searchRef.current;
+    fetchProducts(searchId);
   }, [currentPage, selectedCategory, debouncedSearchTerm, isVectorSearch, sortBy, sortOrder, imagePreview]);
 
 
@@ -1231,7 +1237,7 @@ function App() {
 
                 <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border-color)', fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span>🚀 Cache Hits deliver a <strong>~5.3x speed increase</strong>.</span>
-                  <span style={{ color: 'var(--primary-light)', cursor: 'pointer', fontSize: '0.8rem' }} onClick={fetchProducts}>
+                  <span style={{ color: 'var(--primary-light)', cursor: 'pointer', fontSize: '0.8rem' }} onClick={() => fetchProducts()}>
                     Recalculate metrics
                   </span>
                 </div>
@@ -1704,7 +1710,7 @@ function App() {
                 <div className="panel-header-section">
                   <h3>Recent Cache Activity</h3>
                   <button
-                    onClick={fetchProducts}
+                    onClick={() => fetchProducts()}
                     style={{
                       background: 'none',
                       border: '1px solid var(--border-color)',

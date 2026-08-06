@@ -1,10 +1,36 @@
-# AeroCache: High-Performance E-Commerce Engine with Resilient Caching
+# AeroCache: High-Performance E-Commerce Engine with AI Vector Search & Resilient Caching
 
-A modern, high-performance E-Commerce platform built with a resilient Redis Cache-Aside caching layer, Express backend, and interactive React client dashboard. The architecture is engineered to minimize database pressure by intercepting read queries at the cache level, dropping response latency from over 80ms to sub-15ms.
+A modern, high-performance E-Commerce platform built with a resilient Redis Cache-Aside caching layer, an Express backend, and an interactive React client dashboard. The architecture is engineered to minimize database pressure, drop response latency to sub-15ms, and support offline AI semantic vector & visual image search.
+
+---
+
+## Key Features & Highlights
+
+### 1. High-Performance Caching Layer (Redis)
+* **Cache-Aside (Lazy Loading)**: Read requests check Redis cache keys before querying MongoDB. Latency drops from ~80ms to sub-15ms.
+* **Active Eviction**: Modifying or deleting products automatically flushes relevant product list keys using a Redis `SCAN` cursor, guaranteeing data consistency.
+* **Resilient Fail-Soft Logic**: Bypasses caching seamlessly with `X-Cache: BYPASS` if the Redis server goes offline, maintaining zero downtime.
+
+### 2. AI Semantic Vector & Visual Search Pipeline (ONNX)
+* **Local Offline Embedding Extraction**: Employs a local ONNX model pipeline (Xenova ResNet-50) to run feature extraction and image classification on-server without third-party API costs or network delays.
+* **Multi-Prediction Categorization**: Scans the top 5 classification predictions for visual uploads. If the primary label lacks a match, it falls back to a secondary category mapping to fetch relevant products.
+* **Image Label Synonyms Normalization**: Automatically enriches predicted labels with catalog-aligned synonyms (e.g. mapping `cellular telephone` to `cellular telephone phone mobile smartphone`).
+* **Empty State Prevention**: Bypasses relevance score thresholds (default: `0.20`) when no matches are found, returning the top 12 visually closest matches instead of an empty screen.
+* **Race Condition Prevention**: Employs query sequence indexing inside frontend request pipelines to discard stale search responses.
+
+### 3. Admin AI Analytics Dashboard
+* **Real-Time Telemetry & Insights**: Renders total search count, unanswered queries, and search success ratios.
+* **Data Visualization**: Stacked type-distribution metrics (Text vs Semantic vs Visual/Image search) and responsive daily search trend lines.
+* **Analytics Tables**: Identifies popular search terms and tracks unanswered zero-result queries to optimize stock catalogs.
+
+### 4. UI Polish & Mobile Responsiveness
+* **Transitions**: Smooth page-load tab entries (`.fade-in` transitions) and glowing hover scales.
+* **Skeleton Loaders**: Custom pulsing animated shimmer skeletons for both product grids and the analytics dashboard widgets.
+* **Responsive Layouts**: Collapses the main sidebar into a clean horizontal navigation bar on viewport widths `< 768px` for standard mobile support.
+
+---
 
 ## Architecture & Cache Design
-
-AeroCache implements a robust **Cache-Aside (Lazy Loading)** strategy with active eviction and resilient fail-soft logic:
 
 ```mermaid
 sequenceDiagram
@@ -28,18 +54,15 @@ sequenceDiagram
 ```
 
 ### 1. Cache Key Strategy
-* **Product Lists**: Dynamic key constructed from search, category, paging, and limit parameters to isolate pages:
+* **Product Lists**: Dynamic key constructed from search, category, paging, and sorting parameters:
   `products:all:page_<N>:limit_<M>:cat_<category>:search_<term>`
 * **Single Product Details**: Formatted key mapped to the product's ObjectId:
   `product:id:<ObjectId>`
 
 ### 2. Active Cache Eviction
-When data mutations occur, the server invalidates stale caches immediately to guarantee data consistency:
+When data mutations occur, the server invalidates stale caches immediately:
 * **Product Creation (`POST /api/products`)**: Purges catalog lists caches using Redis `SCAN` cursor to find matching pattern keys (`products:all*`).
 * **Product Update (`PUT /api/products/:id`)** & **Deletion (`DELETE /api/products/:id`)**: Purges the specific item cache (`product:id:<id>`) and purges all catalog page caches (`products:all*`).
-
-### 3. Resilient Fail-Soft Logic
-If the Redis server goes offline, the system gracefully catches socket events and shifts caching status to standby mode. Endpoints transparently query MongoDB directly with **zero downtime or runtime exceptions**, returning `X-Cache: BYPASS` header metrics.
 
 ---
 
@@ -79,14 +102,21 @@ cd ../client
 npm install
 ```
 
-### 3. Database Seeding
-Populate MongoDB with mock ecommerce inventories matching target categories:
+### 3. Add Kaggle Dataset
+1. Download the Flipkart products dataset from Kaggle at the following link:
+   `"https://www.kaggle.com/datasets/atharvjairath/flipkart-ecommerce-dataset"`
+2. Save the downloaded dataset file in the root directory of the project, renaming it to **`products.md`** (i.e. `./products.md` relative to the root).
+3. The database seed script parses this file to populate MongoDB.
+
+### 4. Database Seeding
+Populate MongoDB with mock ecommerce inventories and dummy search logs:
 ```bash
-cd server
+# From server directory
 npm run seed
+npx ts-node src/scripts/seed_search_logs.ts
 ```
 
-### 4. Running the Application
+### 5. Running the Application
 Launch both backend and frontend development processes:
 ```bash
 # Run server (from server directory)

@@ -8,4 +8,5 @@ dist
 .vscode
 server/src/model/
 products.md
+.agents
 

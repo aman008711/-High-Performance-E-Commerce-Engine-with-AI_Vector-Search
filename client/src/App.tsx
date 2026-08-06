@@ -180,6 +180,7 @@ const getLoremFlickrUrl = (name: string, category: string, width = 500, height =
 
 function App() {
   const searchRef = useRef(0);
+  const searchDebounceTimerRef = useRef<any>(null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'catalog' | 'admin' | 'logs'>('dashboard');
   const [hoveredSlice, setHoveredSlice] = useState<number | null>(null);
   const [apiStatus, setApiStatus] = useState<'Online' | 'Offline' | 'Checking'>('Checking');
@@ -609,6 +610,14 @@ function App() {
     return () => clearInterval(intervalId);
   }, []);
 
+  useEffect(() => {
+    const handleAdminLogout = () => {
+      setAuthToken(null);
+    };
+    window.addEventListener('admin-logout', handleAdminLogout);
+    return () => window.removeEventListener('admin-logout', handleAdminLogout);
+  }, []);
+
   const fetchSearchAnalytics = async () => {
     setLoadingAnalytics(true);
     try {
@@ -638,17 +647,26 @@ function App() {
   useEffect(() => {
     if (activeTab === 'dashboard') {
       fetchSearchAnalytics();
+      const intervalId = setInterval(fetchSearchAnalytics, 3000);
+      return () => clearInterval(intervalId);
     }
   }, [activeTab]);
 
-  // Search input debouncer effect (waits 300ms of typing silence before querying)
+  // Search input debouncer effect (waits 750ms of typing silence before querying)
   useEffect(() => {
-    const timer = setTimeout(() => {
+    if (searchDebounceTimerRef.current) {
+      clearTimeout(searchDebounceTimerRef.current);
+    }
+    searchDebounceTimerRef.current = setTimeout(() => {
       setDebouncedSearchTerm(searchTerm);
       setCurrentPage(1);
-    }, 300);
+    }, 750);
 
-    return () => clearTimeout(timer);
+    return () => {
+      if (searchDebounceTimerRef.current) {
+        clearTimeout(searchDebounceTimerRef.current);
+      }
+    };
   }, [searchTerm]);
 
 
@@ -821,6 +839,16 @@ function App() {
 
   const handleSearch = (e: ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      if (searchDebounceTimerRef.current) {
+        clearTimeout(searchDebounceTimerRef.current);
+      }
+      setDebouncedSearchTerm(searchTerm);
+      setCurrentPage(1);
+    }
   };
 
   const handleImageSearchUpload = (e: ChangeEvent<HTMLInputElement>) => {
@@ -1519,7 +1547,7 @@ function App() {
 
                     {/* Trend Line/Bar Chart (SVG) */}
                     <div className="trends-chart-wrapper">
-                      <div style={{ marginBottom: '1rem', fontSize: '0.9rem', fontWeight: 600 }}>14-Day Search Volume Trend</div>
+                      <div style={{ marginBottom: '1rem', fontSize: '0.9rem', fontWeight: 600 }}>Search Volume Trends</div>
                       {searchAnalytics.trends.length === 0 ? (
                         <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '2rem 0' }}>No trend data available</div>
                       ) : (
@@ -1756,6 +1784,7 @@ function App() {
                       type="text"
                       value={imagePreview ? "📷 [Image Search Active]" : searchTerm}
                       onChange={handleSearch}
+                      onKeyDown={handleSearchKeyDown}
                       disabled={!!imagePreview}
                       placeholder={imagePreview ? "Visual search query active..." : "Search product catalog..."}
                       style={{
@@ -2422,6 +2451,7 @@ function App() {
                       type="text"
                       value={searchTerm}
                       onChange={handleSearch}
+                      onKeyDown={handleSearchKeyDown}
                       placeholder="Search admin inventory..."
                       style={{
                         width: '100%',

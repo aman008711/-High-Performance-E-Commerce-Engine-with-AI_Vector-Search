@@ -67,10 +67,10 @@ export const getSearchAnalytics = async (
       }
     ]);
 
-    // Trend for the last 14 days
+    // Trend for the last 14 days (using UTC to prevent timezone shifts)
     const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 14);
-    startDate.setHours(0, 0, 0, 0);
+    startDate.setUTCHours(0, 0, 0, 0);
+    startDate.setUTCDate(startDate.getUTCDate() - 14);
 
     const trendsRaw = await SearchLog.aggregate([
       { $match: { timestamp: { $gte: startDate } } },
@@ -87,7 +87,7 @@ export const getSearchAnalytics = async (
     const trends: { date: string; count: number }[] = [];
     const tempDate = new Date(startDate);
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    today.setUTCHours(0, 0, 0, 0);
 
     while (tempDate <= today) {
       const dateStr = tempDate.toISOString().split('T')[0];
@@ -96,7 +96,7 @@ export const getSearchAnalytics = async (
         date: dateStr,
         count: match ? match.count : 0
       });
-      tempDate.setDate(tempDate.getDate() + 1);
+      tempDate.setUTCDate(tempDate.getUTCDate() + 1);
     }
 
     res.status(200).json({

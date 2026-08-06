@@ -40,6 +40,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<ApiR
     if (xCacheHeader === 'MISS') cacheStatus = 'MISS';
 
     if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        localStorage.removeItem('adminToken');
+        window.dispatchEvent(new Event('admin-logout'));
+      }
       const errData = await response.json().catch(() => ({}));
       throw new Error(errData.message || `HTTP Error: ${response.status}`);
     }

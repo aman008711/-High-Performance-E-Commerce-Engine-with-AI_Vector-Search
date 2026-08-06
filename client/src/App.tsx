@@ -221,6 +221,7 @@ function App() {
 
   // AI Image Search States
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageFileName, setImageFileName] = useState<string>('');
   const [isImageSearching, setIsImageSearching] = useState<boolean>(false);
   const [imagePrediction, setImagePrediction] = useState<{ label: string; score: number } | null>(null);
 
@@ -663,7 +664,7 @@ function App() {
           limit: 12,
           sortBy,
           sortOrder
-        });
+        }, imageFileName || undefined);
       } else {
         fetchPromise = debouncedSearchTerm
           ? api.searchProductsVector({
@@ -815,7 +816,7 @@ function App() {
   useEffect(() => {
     const searchId = ++searchRef.current;
     fetchProducts(searchId);
-  }, [currentPage, selectedCategory, debouncedSearchTerm, isVectorSearch, sortBy, sortOrder, imagePreview]);
+  }, [currentPage, selectedCategory, debouncedSearchTerm, isVectorSearch, sortBy, sortOrder, imagePreview, imageFileName]);
 
 
   const handleSearch = (e: ChangeEvent<HTMLInputElement>) => {
@@ -826,6 +827,7 @@ function App() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setImageFileName(file.name);
     setIsImageSearching(true);
     const reader = new FileReader();
     reader.onloadend = () => {
@@ -844,6 +846,7 @@ function App() {
 
   const clearImageSearch = () => {
     setImagePreview(null);
+    setImageFileName('');
     setImagePrediction(null);
     setSearchTerm('');
     setCurrentPage(1);

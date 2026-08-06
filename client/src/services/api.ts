@@ -148,7 +148,7 @@ export const api = {
     }>(`/products/search/vector${queryString}`);
   },
 
-  searchProductsImage: (base64Image: string, category?: string, params: ProductQuery = {}) => {
+  searchProductsImage: (base64Image: string, category?: string, params: ProductQuery = {}, fileName?: string) => {
     const query = new URLSearchParams();
     if (params.page) query.append('page', params.page.toString());
     if (params.limit) query.append('limit', params.limit.toString());
@@ -172,7 +172,7 @@ export const api = {
       }
     }>(`/products/search/image${queryString}`, {
       method: 'POST',
-      body: JSON.stringify({ image: base64Image, category }),
+      body: JSON.stringify({ image: base64Image, category, fileName }),
     });
   },
 

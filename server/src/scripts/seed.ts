@@ -7,7 +7,6 @@ import bcrypt from 'bcryptjs';
 import fs from 'fs';
 import path from 'path';
 import https from 'https';
-import { env, pipeline } from '@xenova/transformers';
 import { parse } from 'csv-parse/sync';
 
 const TOTAL_PRODUCTS_TO_SEED = 4000;
@@ -263,8 +262,10 @@ const seedDatabase = async () => {
     await ensureModelDownloaded();
     
     // Configure Xenova to bypass Hugging Face remote calls and read from local cache
-    env.localModelPath = path.join(__dirname, "../model/");
-    env.allowRemoteModels = false;
+    const importDynamic = new Function('specifier', 'return import(specifier)');
+    const { env: xenovaEnv, pipeline } = await importDynamic('@xenova/transformers');
+    xenovaEnv.localModelPath = path.join(__dirname, "../model/");
+    xenovaEnv.allowRemoteModels = false;
 
     console.log('🧠 [Seeding] Loading Sentence-Transformers model pipeline...');
     const embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');

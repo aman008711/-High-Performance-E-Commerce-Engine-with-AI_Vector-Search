@@ -2,5 +2,5 @@
   "watch": ["src"],
   "ext": "ts,json",
   "ignore": ["src/config/image_sizes.json"],
-  "exec": "ts-node src/index.ts"
+  "exec": "ts-node"
 }

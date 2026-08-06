@@ -103,6 +103,16 @@ const startServer = async () => {
 
     server.listen(env.PORT, () => {
       console.log(`🚀 [Server] Running in ${env.NODE_ENV} mode on port ${env.PORT}`);
+      
+      // Pre-warm AI models in the background to avoid request-time latency spikes
+      import('./config/embedder').then(async ({ getEmbedder, getClassifier }) => {
+        console.log('🔄 [AI Models] Pre-warming models in the background...');
+        await getEmbedder().catch(err => console.error('Failed to pre-warm embedder:', err));
+        await getClassifier().catch(err => console.error('Failed to pre-warm classifier:', err));
+        console.log('💚 [AI Models] All model pipelines pre-warmed successfully.');
+      }).catch(err => {
+        console.error('Failed to import embedder config:', err);
+      });
     });
 
     // Handle unhandled promise rejections

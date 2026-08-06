@@ -1,11 +1,20 @@
-import { env, pipeline, RawImage } from '@xenova/transformers';
 import path from 'path';
 import fs from 'fs';
 import https from 'https';
 
-// Configure Xenova to bypass remote Hugging Face calls and read from the local cached directory
-env.localModelPath = path.join(__dirname, '../model/');
-env.allowRemoteModels = false;
+let transformersModule: any = null;
+const importDynamic = new Function('specifier', 'return import(specifier)');
+
+async function getTransformers() {
+  if (!transformersModule) {
+    // Dynamic import wrapper to prevent tsc from translating import() to require() in CommonJS target
+    transformersModule = await importDynamic('@xenova/transformers');
+    // Configure Xenova to bypass remote Hugging Face calls and read from local cache
+    transformersModule.env.localModelPath = path.join(__dirname, '../model/');
+    transformersModule.env.allowRemoteModels = false;
+  }
+  return transformersModule;
+}
 
 let embedderInstance: any = null;
 let classifierInstance: any = null;
@@ -62,6 +71,7 @@ export async function ensureVisionModelDownloaded() {
 export const getEmbedder = async () => {
   if (!embedderInstance) {
     console.log('🧠 [Embedder] Initializing Sentence-Transformers model pipeline...');
+    const { pipeline } = await getTransformers();
     embedderInstance = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
     console.log('✅ [Embedder] Embedding pipeline ready.');
   }
@@ -78,6 +88,7 @@ export const getClassifier = async () => {
   if (!classifierInstance) {
     await ensureVisionModelDownloaded();
     console.log('🧠 [Classifier] Initializing ResNet-50 image classification pipeline...');
+    const { pipeline } = await getTransformers();
     classifierInstance = await pipeline('image-classification', 'Xenova/resnet-50');
     console.log('✅ [Classifier] Image classification pipeline ready.');
   }
@@ -87,6 +98,7 @@ export const getClassifier = async () => {
 export const classifyImageBuffer = async (buffer: Buffer): Promise<any[]> => {
   const classifier = await getClassifier();
   const blob = new Blob([buffer]);
+  const { RawImage } = await getTransformers();
   const rawImage = await RawImage.fromBlob(blob as any);
   return await classifier(rawImage);
 };

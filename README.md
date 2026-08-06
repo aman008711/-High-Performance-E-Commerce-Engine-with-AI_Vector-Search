@@ -68,16 +68,49 @@ When data mutations occur, the server invalidates stale caches immediately:
 
 ## Getting Started
 
-### Prerequisites
-* **Node.js** (v18+ recommended)
-* **MongoDB** (running locally on port 27017 or a URI cluster string)
-* **Redis Server** (running locally on port 6379)
+You can run the application either using **Docker Compose** (recommended for zero manual setup) or by starting the services **natively** on your machine.
 
 ---
 
 ## Setup & Execution
 
-### 1. Environment Configurations
+### Option A: Dockerized Setup (Recommended)
+
+Docker Compose coordinates the client, server, MongoDB, and Redis services automatically. It also automatically seeds the database on startup.
+
+#### 1. Add the Dataset
+1. Download the Flipkart products dataset from Kaggle:
+   `"https://www.kaggle.com/datasets/atharvjairath/flipkart-ecommerce-dataset"`
+2. Save the downloaded CSV/dataset file in the **root directory** of the project and rename it to **`products.md`** (i.e. `./products.md` relative to the root).
+3. The server container will mount this file at runtime and run seeding scripts automatically.
+
+#### 2. Run the Stack
+To build and start all containers, run the following command from the root directory:
+```bash
+docker compose up --build
+```
+* **Frontend Dashboard:** Available at `http://localhost:3000` (served via Nginx).
+* **API Server:** Available at `http://localhost:5000` (reverse proxied via Nginx for client calls).
+* **MongoDB:** Mapped to host port `27018` to avoid collision with native databases (resolves internally to port `27017` on the container network).
+* **Redis:** Available on port `6379`.
+
+To stop the containers and clean up networks/volumes:
+```bash
+docker compose down
+```
+
+---
+
+### Option B: Local Native Setup
+
+If you prefer to run the services natively for local development, follow these steps:
+
+#### 1. Prerequisites
+* **Node.js** (v18+ recommended)
+* **MongoDB** (running locally on port `27017`)
+* **Redis Server** (running locally on port `6379`)
+
+#### 2. Environment Configurations
 Create a `.env` file in the `server` directory:
 ```env
 PORT=5000
@@ -87,7 +120,7 @@ REDIS_URL=redis://localhost:6379
 ALLOWED_ORIGINS=http://localhost:3000
 ```
 
-### 2. Installation
+#### 3. Installation
 Install dependencies for both client and server:
 ```bash
 # Install root package dependencies
@@ -102,21 +135,16 @@ cd ../client
 npm install
 ```
 
-### 3. Add Kaggle Dataset
-1. Download the Flipkart products dataset from Kaggle at the following link:
-   `"https://www.kaggle.com/datasets/atharvjairath/flipkart-ecommerce-dataset"`
-2. Save the downloaded dataset file in the root directory of the project, renaming it to **`products.md`** (i.e. `./products.md` relative to the root).
-3. The database seed script parses this file to populate MongoDB.
+#### 4. Add Flipkart Dataset
+1. Place the Flipkart dataset renamed as **`products.md`** in the root workspace folder.
+2. Run database seeding scripts:
+   ```bash
+   # From the server directory
+   npm run seed
+   npx ts-node src/scripts/seed_search_logs.ts
+   ```
 
-### 4. Database Seeding
-Populate MongoDB with mock ecommerce inventories and dummy search logs:
-```bash
-# From server directory
-npm run seed
-npx ts-node src/scripts/seed_search_logs.ts
-```
-
-### 5. Running the Application
+#### 5. Run the Application
 Launch both backend and frontend development processes:
 ```bash
 # Run server (from server directory)

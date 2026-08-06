@@ -1,0 +1,58 @@
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: aerocache-mongodb
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - aerocache-network
+
+  redis:
+    image: redis:alpine
+    container_name: aerocache-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - aerocache-network
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: aerocache-server
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - NODE_ENV=production
+      - MONGO_URI=mongodb://mongodb:27017/ecommerce
+      - REDIS_URL=redis://redis:6379
+      - ALLOWED_ORIGINS=http://localhost:3000
+    depends_on:
+      - mongodb
+      - redis
+    volumes:
+      - ./products.md:/products.md
+    networks:
+      - aerocache-network
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: aerocache-client
+    ports:
+      - "3000:3000"
+    depends_on:
+      - server
+    networks:
+      - aerocache-network
+
+volumes:
+  mongo-data:
+
+networks:
+  aerocache-network:
+    driver: bridge

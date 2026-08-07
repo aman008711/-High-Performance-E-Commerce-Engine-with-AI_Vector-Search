@@ -177,3 +177,21 @@ Inspect network requests in your browser DevTools or via `curl`:
 2. Select any product and edit its price or name.
 3. Click **Save Product**.
 4. Observe the console log telemetry stream: any subsequent product listing queries will trigger a `CACHE MISS` as the outdated caches were successfully evicted, followed by `CACHE HIT` on secondary loads.
+
+---
+
+## CI/CD & Code Quality Verification
+
+The repository includes pre-configured code quality checkers and automated test suites.
+
+### 1. Static Linting Analysis (ESLint)
+To run ESLint style and quality rules validation across the entire codebase (both client and server):
+```bash
+npm run lint
+```
+
+### 2. Automated Integration Testing (Jest & Supertest)
+To execute the integration test suite (covering server health checks, cart calculations, order placement, stock decrement, and ACID rollback transactions):
+```bash
+npm test
+```

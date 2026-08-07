@@ -15,6 +15,7 @@ export interface IProduct extends Document {
   tags: string[];
   imageUrl: string;
   vectorEmbedding?: number[]; // Vector coordinates array for AI semantic search
+  isDeleted?: boolean; // Soft deletion indicator for audit trails
   createdAt: Date;
   updatedAt: Date;
 }
@@ -95,6 +96,11 @@ const productSchema = new Schema<IProduct>(
     vectorEmbedding: {
       type: [Number], // Float coordinates array
       default: undefined, // Let it be undefined unless populated during seeding
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
     },
   },
   {

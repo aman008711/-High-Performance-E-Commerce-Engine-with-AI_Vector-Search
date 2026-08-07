@@ -8,7 +8,9 @@ import {
   searchProductsVector,
   searchProductsImage,
   getProductRecommendations,
-  getCategoryWiseProducts
+  getCategoryWiseProducts,
+  getDeletedProducts,
+  restoreProduct
 } from '../controllers/productController';
 import { apiRateLimiter, mutationRateLimiter } from '../middleware/rateLimiter';
 import { adminAuth } from '../middleware/auth';
@@ -30,6 +32,9 @@ router.get('/category-wise', getCategoryWiseProducts);
 // Retrieve product listings
 router.get('/', getProducts);
 
+// Retrieve soft-deleted products for admin
+router.get('/admin/deleted', adminAuth, getDeletedProducts);
+
 // Retrieve details for a single product
 router.get('/:id', getProduct);
 
@@ -40,5 +45,6 @@ router.get('/:id/recommendations', getProductRecommendations);
 router.post('/', adminAuth, mutationRateLimiter, createProduct);
 router.put('/:id', adminAuth, mutationRateLimiter, updateProduct);
 router.delete('/:id', adminAuth, mutationRateLimiter, deleteProduct);
+router.patch('/:id/restore', adminAuth, mutationRateLimiter, restoreProduct);
 
 export default router;

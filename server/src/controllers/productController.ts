@@ -75,7 +75,7 @@ export const getProducts = async (
     }
 
     // Cache miss or Redis offline: Query MongoDB database directly
-    const filterQuery: any = {};
+    const filterQuery: any = { isDeleted: { $ne: true } };
 
     if (category) {
       filterQuery.category = category;
@@ -168,7 +168,7 @@ export const getProduct = async (
     }
 
     // Query database on cache miss
-    const product = await Product.findById(id);
+    const product = await Product.findOne({ _id: id, isDeleted: { $ne: true } });
     if (!product) {
       throw new NotFoundError('Product not found');
     }
@@ -233,10 +233,14 @@ export const updateProduct = async (
       throw new BadRequestError('Invalid product ID format');
     }
 
-    const product = await Product.findByIdAndUpdate(id, req.body, {
-      new: true,
-      runValidators: true,
-    });
+    const product = await Product.findOneAndUpdate(
+      { _id: id, isDeleted: { $ne: true } },
+      req.body,
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
 
     if (!product) {
       throw new NotFoundError('Product not found');
@@ -271,7 +275,11 @@ export const deleteProduct = async (
       throw new BadRequestError('Invalid product ID format');
     }
 
-    const product = await Product.findByIdAndDelete(id);
+    const product = await Product.findOneAndUpdate(
+      { _id: id, isDeleted: { $ne: true } },
+      { isDeleted: true },
+      { new: true }
+    );
 
     if (!product) {
       throw new NotFoundError('Product not found');
@@ -280,6 +288,7 @@ export const deleteProduct = async (
     // Invalidate details cache key and all search listing keys
     await delCache(`product:id:${id}`);
     await delCachePattern('products:all*');
+    await delCache('products:categorywise');
 
     // Trigger non-blocking background cache pre-warming for default main list page
     warmCache().catch(err => console.error('[Redis] Background cache warming failed:', err));
@@ -303,8 +312,8 @@ export const warmCache = async (): Promise<void> => {
     const skip = 0;
 
     const [products, total] = await Promise.all([
-      Product.find().sort({ createdAt: -1 }).skip(skip).limit(limit),
-      Product.countDocuments()
+      Product.find({ isDeleted: { $ne: true } }).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Product.countDocuments({ isDeleted: { $ne: true } })
     ]);
 
     const pages = Math.ceil(total / limit);
@@ -592,7 +601,7 @@ export const searchProductsVector = async (
 
     // 2. Attempt MongoDB Atlas Vector Search
     try {
-      const filter: any = {};
+      const filter: any = { isDeleted: { $ne: true } };
       if (parsedQuery.category) filter.category = parsedQuery.category;
       if (parsedQuery.brand) filter.brand = parsedQuery.brand;
       if (parsedQuery.gender) filter.gender = parsedQuery.gender;
@@ -643,7 +652,7 @@ export const searchProductsVector = async (
       layerUsed = "Direct Metadata Match";
 
       // Layer 1: Strict match using parsed category, subcategory, brand, gender, and price range
-      const filterQuery: any = { vectorEmbedding: { $exists: true, $ne: null } };
+      const filterQuery: any = { isDeleted: { $ne: true }, vectorEmbedding: { $exists: true, $ne: null } };
       if (parsedQuery.category) {
         filterQuery.category = parsedQuery.category;
       }
@@ -674,7 +683,7 @@ export const searchProductsVector = async (
       if (candidates.length === 0 && parsedQuery.category) {
         layerUsed = "Category Fallback Match";
         candidates = await Product.find(
-          { category: parsedQuery.category, vectorEmbedding: { $exists: true, $ne: null } },
+          { category: parsedQuery.category, isDeleted: { $ne: true }, vectorEmbedding: { $exists: true, $ne: null } },
           { name: 1, description: 1, price: 1, stock: 1, category: 1, subcategory: 1, brand: 1, color: 1, gender: 1, material: 1, rating: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
         );
       }
@@ -683,7 +692,7 @@ export const searchProductsVector = async (
       if (candidates.length === 0 && !parsedQuery.category && !parsedQuery.subcategory) {
         layerUsed = "Global Fallback Match";
         candidates = await Product.find(
-          { vectorEmbedding: { $exists: true, $ne: null } },
+          { isDeleted: { $ne: true }, vectorEmbedding: { $exists: true, $ne: null } },
           { name: 1, description: 1, price: 1, stock: 1, category: 1, subcategory: 1, brand: 1, color: 1, gender: 1, material: 1, rating: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
         );
       }
@@ -979,20 +988,43 @@ export const getCategoryWiseProducts = async (
       return;
     }
 
-    // 1. Get top categories by product count
-    const topCategories = await Product.aggregate([
+    // 1. Get all categories by product count sorted descending (active only)
+    const allCategories = await Product.aggregate([
+      { $match: { isDeleted: { $ne: true } } },
       { $group: { _id: '$category', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 10 }
+      { $sort: { count: -1 } }
     ]);
+
+    // Group categories outside the top 9 under "Others" to match total catalog counts
+    const top9 = allCategories.slice(0, 9);
+    const remaining = allCategories.slice(9);
+    const othersCount = remaining.reduce((sum, c) => sum + c.count, 0);
+
+    const topCategories = [...top9];
+    if (othersCount > 0) {
+      topCategories.push({
+        _id: 'Others',
+        count: othersCount
+      });
+    }
+
+    const top9Ids = top9.map(c => c._id).filter(Boolean);
 
     // 2. Fetch up to 6 products for each category
     const results = [];
     for (const cat of topCategories) {
       if (!cat._id) continue;
-      const products = await Product.find({ category: cat._id })
-        .select('-vectorEmbedding')
-        .limit(6);
+      
+      let products;
+      if (cat._id === 'Others') {
+        products = await Product.find({ category: { $nin: top9Ids }, isDeleted: { $ne: true } })
+          .select('-vectorEmbedding')
+          .limit(6);
+      } else {
+        products = await Product.find({ category: cat._id, isDeleted: { $ne: true } })
+          .select('-vectorEmbedding')
+          .limit(6);
+      }
 
       results.push({
         category: cat._id,
@@ -1225,7 +1257,7 @@ export const searchProductsImage = async (
 
     // Attempt Atlas Vector Search
     try {
-      const filter: any = {};
+      const filter: any = { isDeleted: { $ne: true } };
       if (parsedQuery.category) filter.category = parsedQuery.category;
       if (parsedQuery.brand) filter.brand = parsedQuery.brand;
       if (parsedQuery.gender) filter.gender = parsedQuery.gender;
@@ -1275,7 +1307,7 @@ export const searchProductsImage = async (
       // Fallback to local in-memory cosine similarity
       layerUsed = "Direct Metadata Match (Visual)";
 
-      const filterQuery: any = { vectorEmbedding: { $exists: true, $ne: null } };
+      const filterQuery: any = { isDeleted: { $ne: true }, vectorEmbedding: { $exists: true, $ne: null } };
       if (parsedQuery.category) {
         filterQuery.category = parsedQuery.category;
       }
@@ -1305,7 +1337,7 @@ export const searchProductsImage = async (
       if (candidates.length === 0 && parsedQuery.category) {
         layerUsed = "Category Fallback Match (Visual)";
         candidates = await Product.find(
-          { category: parsedQuery.category, vectorEmbedding: { $exists: true, $ne: null } },
+          { category: parsedQuery.category, isDeleted: { $ne: true }, vectorEmbedding: { $exists: true, $ne: null } },
           { name: 1, description: 1, price: 1, stock: 1, category: 1, subcategory: 1, brand: 1, color: 1, gender: 1, material: 1, rating: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
         );
       }
@@ -1313,7 +1345,7 @@ export const searchProductsImage = async (
       if (candidates.length === 0 && !parsedQuery.category && !parsedQuery.subcategory) {
         layerUsed = "Global Fallback Match (Visual)";
         candidates = await Product.find(
-          { vectorEmbedding: { $exists: true, $ne: null } },
+          { isDeleted: { $ne: true }, vectorEmbedding: { $exists: true, $ne: null } },
           { name: 1, description: 1, price: 1, stock: 1, category: 1, subcategory: 1, brand: 1, color: 1, gender: 1, material: 1, rating: 1, tags: 1, imageUrl: 1, vectorEmbedding: 1 }
         );
       }
@@ -1545,6 +1577,84 @@ export const searchProductsImage = async (
           latencyMs: latency,
           layerUsed
         }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Fetch all soft-deleted products for admin
+export const getDeletedProducts = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  const startTime = performance.now();
+  try {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.max(1, Math.min(100, parseInt(req.query.limit as string) || 12));
+    const skip = (page - 1) * limit;
+
+    const [products, total] = await Promise.all([
+      Product.find({ isDeleted: true }).sort({ updatedAt: -1 }).skip(skip).limit(limit),
+      Product.countDocuments({ isDeleted: true })
+    ]);
+
+    const pages = Math.ceil(total / limit);
+    const endTime = performance.now();
+    const latency = parseFloat((endTime - startTime).toFixed(2));
+
+    res.setHeader('X-Response-Time', `${latency}ms`);
+    res.status(200).json({
+      status: 'success',
+      data: {
+        products,
+        total,
+        pages
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Soft-restore a deleted product
+export const restoreProduct = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new BadRequestError('Invalid product ID format');
+    }
+
+    const product = await Product.findOneAndUpdate(
+      { _id: id, isDeleted: true },
+      { isDeleted: false },
+      { new: true }
+    );
+
+    if (!product) {
+      throw new NotFoundError('Product not found');
+    }
+
+    // Invalidate details cache key and all search listing keys
+    await delCache(`product:id:${id}`);
+    await delCachePattern('products:all*');
+    await delCache('products:categorywise');
+
+    // Trigger background cache pre-warming
+    warmCache().catch(err => console.error('[Redis] Background cache warming failed:', err));
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        success: true,
+        product
       }
     });
   } catch (error) {

@@ -8,6 +8,7 @@ import {
   Terminal,
   Cpu,
   RefreshCw,
+  Undo,
   Search,
   SlidersHorizontal,
   ChevronLeft,
@@ -187,9 +188,11 @@ function App() {
   const [dbStatus, setDbStatus] = useState<'Connected' | 'Disconnected' | 'Checking'>('Checking');
   const [editingProduct, setEditingProduct] = useState<ApiProduct | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
 
   // Authentication & Security states
   const [authToken, setAuthToken] = useState<string | null>(localStorage.getItem('adminToken'));
+  const [adminView, setAdminView] = useState<'active' | 'deleted'>('active');
   const [loginUsername, setLoginUsername] = useState<string>('');
   const [loginPassword, setLoginPassword] = useState<string>('');
   const [loginError, setLoginError] = useState<string>('');
@@ -676,7 +679,12 @@ function App() {
     setLoading(true);
     try {
       let fetchPromise;
-      if (imagePreview) {
+      if (activeTab === 'admin' && adminView === 'deleted') {
+        fetchPromise = api.getDeletedProducts({
+          page: currentPage,
+          limit: 12
+        });
+      } else if (imagePreview) {
         fetchPromise = api.searchProductsImage(imagePreview, selectedCategory || undefined, {
           page: currentPage,
           limit: 12,
@@ -834,7 +842,7 @@ function App() {
   useEffect(() => {
     const searchId = ++searchRef.current;
     fetchProducts(searchId);
-  }, [currentPage, selectedCategory, debouncedSearchTerm, isVectorSearch, sortBy, sortOrder, imagePreview, imageFileName]);
+  }, [currentPage, selectedCategory, debouncedSearchTerm, isVectorSearch, sortBy, sortOrder, imagePreview, imageFileName, adminView, activeTab]);
 
 
   const handleSearch = (e: ChangeEvent<HTMLInputElement>) => {
@@ -905,6 +913,18 @@ function App() {
       } finally {
         setDeletingId(null);
       }
+    }
+  };
+
+  const handleRestore = async (id: string) => {
+    setRestoringId(id);
+    try {
+      await api.restoreProduct(id);
+      await fetchProducts();
+    } catch (err) {
+      alert('Failed to restore product: ' + err);
+    } finally {
+      setRestoringId(null);
     }
   };
 
@@ -2443,87 +2463,131 @@ function App() {
 
           {activeTab === 'admin' && authToken && (
             <div className="section-panel fade-in">
+              {/* Admin Mode Toggle Tabs */}
+              <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+                <button
+                  className={`btn ${adminView === 'active' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => { setAdminView('active'); setCurrentPage(1); }}
+                  style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem' }}
+                >
+                  Active Inventory
+                </button>
+                <button
+                  className={`btn ${adminView === 'deleted' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => { setAdminView('deleted'); setCurrentPage(1); }}
+                  style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.45rem' }}
+                >
+                  <Trash2 size={14} />
+                  Deleted History Tracker
+                </button>
+              </div>
+
               {/* Filter Controls Header */}
-              <div className="panel-header-section" style={{ flexWrap: 'wrap', gap: '1rem' }}>
-                <div style={{ display: 'flex', gap: '0.75rem', flex: 1, minWidth: '300px' }}>
-                  <div style={{ position: 'relative', flex: 1 }}>
-                    <Search size={14} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
-                    <input
-                      type="text"
-                      value={searchTerm}
-                      onChange={handleSearch}
-                      onKeyDown={handleSearchKeyDown}
-                      placeholder="Search admin inventory..."
+              {adminView === 'active' ? (
+                <div className="panel-header-section" style={{ flexWrap: 'wrap', gap: '1rem' }}>
+                  <div style={{ display: 'flex', gap: '0.75rem', flex: 1, minWidth: '300px' }}>
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <Search size={14} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
+                      <input
+                        type="text"
+                        value={searchTerm}
+                        onChange={handleSearch}
+                        onKeyDown={handleSearchKeyDown}
+                        placeholder="Search admin inventory..."
+                        style={{
+                          width: '100%',
+                          backgroundColor: 'var(--bg-main)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: 'var(--radius-sm)',
+                          padding: '0.5rem 0.5rem 0.5rem 2.2rem',
+                          fontSize: '0.9rem',
+                          outline: 'none'
+                        }}
+                      />
+                    </div>
+                    <select
+                      value={selectedCategory}
+                      onChange={(e) => { setSelectedCategory(e.target.value); setCurrentPage(1); }}
                       style={{
-                        width: '100%',
                         backgroundColor: 'var(--bg-main)',
                         border: '1px solid var(--border-color)',
                         borderRadius: 'var(--radius-sm)',
-                        padding: '0.5rem 0.5rem 0.5rem 2.2rem',
+                        padding: '0.5rem 1.5rem 0.5rem 0.75rem',
                         fontSize: '0.9rem',
-                        outline: 'none'
+                        color: 'var(--text-main)',
+                        outline: 'none',
+                        cursor: 'pointer'
                       }}
-                    />
-                  </div>
-                  <select
-                    value={selectedCategory}
-                    onChange={(e) => { setSelectedCategory(e.target.value); setCurrentPage(1); }}
-                    style={{
-                      backgroundColor: 'var(--bg-main)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: 'var(--radius-sm)',
-                      padding: '0.5rem 1.5rem 0.5rem 0.75rem',
-                      fontSize: '0.9rem',
-                      color: 'var(--text-main)',
-                      outline: 'none',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <option value="">All Categories</option>
-                    {dynamicCategories.map((cat, idx) => (
-                      <option key={idx} value={cat}>{cat}</option>
-                    ))}
-                  </select>
+                    >
+                      <option value="">All Categories</option>
+                      {dynamicCategories.map((cat, idx) => (
+                        <option key={idx} value={cat}>{cat}</option>
+                      ))}
+                    </select>
 
-                  <select
-                    value={`${sortBy}:${sortOrder}`}
-                    onChange={handleSortChange}
-                    style={{
-                      backgroundColor: 'var(--bg-main)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: 'var(--radius-sm)',
-                      padding: '0.5rem 1.5rem 0.5rem 0.75rem',
-                      fontSize: '0.9rem',
-                      color: 'var(--text-main)',
-                      outline: 'none',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <option value="createdAt:desc">Newest Products</option>
-                    <option value="price:asc">Price: Low to High</option>
-                    <option value="price:desc">Price: High to Low</option>
-                    <option value="name:asc">Product Name: A-Z</option>
-                    <option value="name:desc">Product Name: Z-A</option>
-                  </select>
+                    <select
+                      value={`${sortBy}:${sortOrder}`}
+                      onChange={handleSortChange}
+                      style={{
+                        backgroundColor: 'var(--bg-main)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 'var(--radius-sm)',
+                        padding: '0.5rem 1.5rem 0.5rem 0.75rem',
+                        fontSize: '0.9rem',
+                        color: 'var(--text-main)',
+                        outline: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="createdAt:desc">Newest Products</option>
+                      <option value="price:asc">Price: Low to High</option>
+                      <option value="price:desc">Price: High to Low</option>
+                      <option value="name:asc">Product Name: A-Z</option>
+                      <option value="name:desc">Product Name: Z-A</option>
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                      {totalProducts} total items
+                    </span>
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => setEditingProduct({ _id: '', name: '', description: '', price: 0, stock: 0, category: dynamicCategories[0] || CATEGORIES[0], tags: [], imageUrl: '' } as any)}
+                    >
+                      Create Product
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={handleLogout}
+                    >
+                      Logout
+                    </button>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    {totalProducts} total items
-                  </span>
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => setEditingProduct({ _id: '', name: '', description: '', price: 0, stock: 0, category: dynamicCategories[0] || CATEGORIES[0], tags: [], imageUrl: '' } as any)}
-                  >
-                    Create Product
-                  </button>
-                  <button
-                    className="btn btn-secondary"
-                    onClick={handleLogout}
-                  >
-                    Logout
-                  </button>
+              ) : (
+                <div className="panel-header-section" style={{ flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Trash2 size={18} style={{ color: 'var(--danger)' }} />
+                      Deleted Products History Tracker
+                    </h3>
+                    <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      Audit logs of soft-deleted products. Restoration instantly invalidates cache states and refreshes catalogs.
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginLeft: 'auto' }}>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                      {products.length} items shown
+                    </span>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={handleLogout}
+                    >
+                      Logout
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Table Loader vs Admin Inventory Table */}
               {loading ? (
@@ -2540,10 +2604,10 @@ function App() {
                 </div>
               ) : products.length === 0 ? (
                 <div style={{ padding: '4rem 0', color: 'var(--text-muted)', textAlign: 'center' }}>
-                  <p>No products match your search or filter settings.</p>
+                  <p>{adminView === 'deleted' ? 'No soft-deleted products in history.' : 'No products match your search or filter settings.'}</p>
                 </div>
               ) : (
-                <div className="admin-table-container">
+                <div className="admin-table-container" style={{ marginTop: '1rem' }}>
                   <table className="admin-table">
                     <thead>
                       <tr>
@@ -2567,27 +2631,56 @@ function App() {
                               {isZeroStock ? 'Out of Stock' : `${p.stock} units`}
                             </td>
                             <td>
-                              <span className={`log-tag hit`}>Cached</span>
+                              <span className={`log-tag ${adminView === 'deleted' ? 'miss' : 'hit'}`}>
+                                {adminView === 'deleted' ? 'Evicted' : 'Cached'}
+                              </span>
                             </td>
                             <td>
                               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                <button
-                                  className="btn btn-secondary"
-                                  onClick={() => setEditingProduct(p)}
-                                  title="Edit details"
-                                >
-                                  <Edit size={14} />
-                                  Edit
-                                </button>
-                                <button
-                                  className="btn btn-danger"
-                                  onClick={() => handleDelete(p._id)}
-                                  disabled={deletingId === p._id}
-                                  title="Delete product"
-                                >
-                                  <Trash2 size={14} />
-                                  {deletingId === p._id ? 'Deleting...' : 'Delete'}
-                                </button>
+                                {adminView === 'deleted' ? (
+                                  <button
+                                    className="btn"
+                                    onClick={() => handleRestore(p._id)}
+                                    disabled={restoringId === p._id}
+                                    style={{
+                                      backgroundColor: '#10b981',
+                                      color: 'white',
+                                      border: 'none',
+                                      padding: '0.4rem 0.8rem',
+                                      borderRadius: 'var(--radius-sm)',
+                                      fontSize: '0.85rem',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.35rem',
+                                      transition: 'opacity 0.2s'
+                                    }}
+                                    title="Restore product"
+                                  >
+                                    <Undo size={14} />
+                                    {restoringId === p._id ? 'Restoring...' : 'Restore'}
+                                  </button>
+                                ) : (
+                                  <>
+                                    <button
+                                      className="btn btn-secondary"
+                                      onClick={() => setEditingProduct(p)}
+                                      title="Edit details"
+                                    >
+                                      <Edit size={14} />
+                                      Edit
+                                    </button>
+                                    <button
+                                      className="btn btn-danger"
+                                      onClick={() => handleDelete(p._id)}
+                                      disabled={deletingId === p._id}
+                                      title="Delete product"
+                                    >
+                                      <Trash2 size={14} />
+                                      {deletingId === p._id ? 'Deleting...' : 'Delete'}
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             </td>
                           </tr>

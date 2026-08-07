@@ -222,7 +222,7 @@ export const placeOrder = async (
       // Check stock availability atomically
       const productQuery = Product.findById(item.productId);
       const product = session ? await productQuery.session(session) : await productQuery;
-      if (!product) {
+      if (!product || product.isDeleted) {
         throw new NotFoundError(`Product not found: ${item.productId}`);
       }
 

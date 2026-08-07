@@ -205,6 +205,19 @@ export const api = {
     });
   },
 
+  getDeletedProducts: (query: { page?: number; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (query.page) params.append('page', query.page.toString());
+    if (query.limit) params.append('limit', query.limit.toString());
+    return request<{ products: ApiProduct[]; total: number; pages: number }>(`/products/admin/deleted?${params.toString()}`);
+  },
+
+  restoreProduct: (id: string) => {
+    return request<{ success: boolean; product: ApiProduct }>(`/products/${id}/restore`, {
+      method: 'PATCH',
+    });
+  },
+
   // Observability
   getHealth: () => {
     return request<HealthCheckResponse>('/health');

@@ -111,4 +111,4 @@ jobs:
         run: npm ci
 
       - name: Run checkout integration tests
-        run: npx ts-node src/tests/checkout.test.ts
+        run: npm test

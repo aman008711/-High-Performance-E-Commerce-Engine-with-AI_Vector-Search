@@ -20,7 +20,7 @@ export const getIO = (): SocketIOServer | null => {
   return ioInstance;
 };
 
-const app = express();
+export const app = express();
 
 // Security HTTP headers
 app.use(helmet());

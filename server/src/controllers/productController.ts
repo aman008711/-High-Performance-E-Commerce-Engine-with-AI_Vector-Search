@@ -1331,7 +1331,7 @@ export const searchProductsImage = async (
     }
 
     // Hybrid Ranking Score Calculation
-    let scoredCandidates = candidates.map((product) => {
+    const scoredCandidates = candidates.map((product) => {
       const productEmbedding = product.vectorEmbedding || [];
       const vectorScore = isAtlasUsed && typeof product.score === 'number'
         ? product.score

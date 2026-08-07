@@ -1,4 +1,3 @@
-import mongoose from 'mongoose';
 import { connectDB } from '../config/db';
 import { SearchLog } from '../models/SearchLog';
 

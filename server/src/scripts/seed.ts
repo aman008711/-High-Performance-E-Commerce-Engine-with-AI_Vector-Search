@@ -160,8 +160,8 @@ function classifyCategory(categoryTree: string, name: string, specifications: st
   }
 
   // 3. Fallback to Flipkart Category Tree top-level name
-  const treeParts = (categoryTree || '').replace(/[\[\]"]/g, '').split(' >> ').map((s: string) => s.trim());
-  let category = treeParts[0] || '';
+  const treeParts = (categoryTree || '').replace(/[[\]"]/g, '').split(' >> ').map((s: string) => s.trim());
+  const category = treeParts[0] || '';
 
   if (!category || category.length > 50 || category.includes('(') || category.includes('with Pot') || category.split(' ').length > 4) {
     return guessCategory(categoryTree, name);
@@ -331,7 +331,7 @@ const seedDatabase = async () => {
       const category = classifyCategory(record.category_tree, rawName, record.product_specifications);
 
       // Subcategory
-      const catParts = (record.category_tree || '').replace(/[\[\]"]/g, '').split(' >> ').map((s: string) => s.trim());
+      const catParts = (record.category_tree || '').replace(/[[\]"]/g, '').split(' >> ').map((s: string) => s.trim());
       let subcategory = catParts[1] || 'General';
       if (subcategory.length > 50) {
         subcategory = subcategory.substring(0, 50) + '...';
@@ -364,7 +364,7 @@ const seedDatabase = async () => {
       let imageUrl = '';
       if (record.image_url) {
         // Clean square brackets, quotes, whitespace, and take the first URL in any comma-separated sequence
-        const cleanUrl = record.image_url.replace(/[\[\]"\s]/g, '').split(',')[0];
+        const cleanUrl = record.image_url.replace(/[[\]"\s]/g, '').split(',')[0];
         imageUrl = cleanUrl || getLoremFlickrUrl(rawName, category);
       } else {
         imageUrl = getLoremFlickrUrl(rawName, category);

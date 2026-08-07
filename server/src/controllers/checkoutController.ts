@@ -301,7 +301,7 @@ export const placeOrder = async (
     }
 
     // Broadcast updated inventory levels to all active clients via Socket.io
-    const { getIO } = require('../index');
+    const { getIO } = await import('../index');
     const io = getIO();
     if (io) {
       io.emit('inventoryUpdate', orderItems.map(item => ({

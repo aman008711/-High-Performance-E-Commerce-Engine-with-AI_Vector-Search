@@ -6,9 +6,8 @@ import redis, { isRedisConnected } from '../config/redis';
 const getStore = () => {
   if (isRedisConnected()) {
     return new RedisStore({
-      // @ts-ignore ioredis types compatible, but RedisStore types expect specific client interface
+      // @ts-expect-error - ioredis types compatible, but RedisStore types expect specific client interface
       sendCommand: (...args: string[]) => {
-        // @ts-ignore
         return redis.call(args[0], ...args.slice(1));
       },
     });

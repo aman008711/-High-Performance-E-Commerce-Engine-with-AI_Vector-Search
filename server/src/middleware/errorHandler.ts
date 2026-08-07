@@ -6,7 +6,7 @@ export const errorHandler = (
   err: Error,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ) => {
   // If it's our custom application error
   if (err instanceof AppError) {

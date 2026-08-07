@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
 import { SearchLog } from '../models/SearchLog';
-import { Product } from '../models/Product';
 
 export const getSearchAnalytics = async (
   req: Request,

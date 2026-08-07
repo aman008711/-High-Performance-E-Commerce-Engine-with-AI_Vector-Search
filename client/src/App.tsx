@@ -113,7 +113,7 @@ const highlightKeywords = (text: string, searchStr: string): React.ReactNode => 
   const words = searchStr.toLowerCase().split(/\s+/).filter(w => w.length > 2);
   if (words.length === 0) return text;
 
-  const escWords = words.map(w => w.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'));
+  const escWords = words.map(w => w.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&'));
   const patterns = escWords.map(w => w.endsWith('s') && w.length > 3 ? `${w}|${w.slice(0, -1)}` : w);
   const regex = new RegExp(`\\b(${patterns.join('|')})\\b`, 'gi');
 
